@@ -35,73 +35,81 @@ import Modal from "./components/modals/Modal";
 import "./App.css";
 
 export default function LMSAdminUI() {
-  const state = useLmsState();
   // ============================================
-  // GLOBAL STATE — mirrors the data model
+  // GLOBAL STATE — from useLmsState hook
   // ============================================
-  const [view, setView] = useState({ page: "library" }); // page: library | learners | learner-profile | learning-plan | enrollment-detail
-
-  // TEMPLATES (the library)
-  const [apprenticeships, setApprenticeships] = useState([]);
-  const [qualifications, setQualifications] = useState([]);
-  const [units, setUnits] = useState([]);
-  const [shortCourses, setShortCourses] = useState([]);
-  const [ksbs, setKsbs] = useState([]); // belongs to apprenticeships
-  const [assignmentTemplates, setAssignmentTemplates] = useState([]);
-
-  // LEARNERS
-  const [learners, setLearners] = useState([]);
-
-  // ENROLLMENTS (per-learner instances)
-  const [apprenticeshipEnrollments, setApprenticeshipEnrollments] = useState(
-    [],
-  );
-  const [qualEnrollments, setQualEnrollments] = useState([]);
-  const [unitEnrollments, setUnitEnrollments] = useState([]);
-  const [shortCourseEnrollments, setShortCourseEnrollments] = useState([]);
-
-  // LEARNING PLAN ITEMS (top-level pointers)
-  const [planItems, setPlanItems] = useState([]);
-
-  // PROGRESS / per-learner
-  const [learnerKsbs, setLearnerKsbs] = useState([]);
-  const [learnerAssignments, setLearnerAssignments] = useState([]);
-  const [otjHours, setOtjHours] = useState([]);
-  const [gateways, setGateways] = useState([]);
-
-  // Modal state
-  const [modal, setModal] = useState(null);
-
-  // ============================================
-  // HELPERS
-  // ============================================
-  const newId = (prefix) =>
-    `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-
-  const getLearner = (id) => learners.find((l) => l.id === id);
-  const getTemplate = (type, id) => {
-    const map = {
-      apprenticeship: apprenticeships,
-      qualification: qualifications,
-      unit: units,
-      short_course: shortCourses,
-    };
-    return map[type]?.find((t) => t.id === id);
-  };
-
-  // Build the enrollment tree for a learner
-  const getLearnerEnrollments = (learnerId) => {
-    return {
-      apprenticeships: apprenticeshipEnrollments.filter(
-        (e) => e.learner_id === learnerId,
-      ),
-      qualifications: qualEnrollments.filter((e) => e.learner_id === learnerId),
-      units: unitEnrollments.filter((e) => e.learner_id === learnerId),
-      shortCourses: shortCourseEnrollments.filter(
-        (e) => e.learner_id === learnerId,
-      ),
-    };
-  };
+  const {
+    // Navigation
+    view,
+    setView,
+    // TEMPLATES
+    apprenticeships,
+    setApprenticeships,
+    qualifications,
+    setQualifications,
+    units,
+    setUnits,
+    shortCourses,
+    setShortCourses,
+    ksbs,
+    setKsbs,
+    assignments,
+    setAssignments,
+    // TEMPLATE COMPOSITION JUNCTIONS
+    apprenticeshipQualifications,
+    setApprenticeshipQualifications,
+    apprenticeshipShortCourses,
+    setApprenticeshipShortCourses,
+    qualificationUnits,
+    setQualificationUnits,
+    // TEMPLATE-LEVEL KSB MAPPINGS
+    ksbUnitMappings,
+    setKsbUnitMappings,
+    ksbAssignmentMappings,
+    setKsbAssignmentMappings,
+    ksbShortCourseMappings,
+    setKsbShortCourseMappings,
+    ksbQualificationMappings,
+    setKsbQualificationMappings,
+    // LEARNERS
+    learners,
+    setLearners,
+    learningPlans,
+    setLearningPlans,
+    // LEARNING PLAN ITEMS
+    planItems,
+    setPlanItems,
+    // ENROLLMENTS
+    apprenticeshipEnrollments,
+    setApprenticeshipEnrollments,
+    qualEnrollments,
+    setQualEnrollments,
+    unitEnrollments,
+    setUnitEnrollments,
+    shortCourseEnrollments,
+    setShortCourseEnrollments,
+    // PROGRESS
+    learnerKsbs,
+    setLearnerKsbs,
+    learnerAssignments,
+    setLearnerAssignments,
+    learnerAssignmentKsbs,
+    setLearnerAssignmentKsbs,
+    otjHours,
+    setOtjHours,
+    otjKsbLinks,
+    setOtjKsbLinks,
+    gateways,
+    setGateways,
+    // MODAL
+    modal,
+    setModal,
+    // HELPERS
+    newId,
+    getLearner,
+    getTemplate,
+    getLearnerEnrollments,
+  } = useLmsState();
 
   // ============================================
   // STYLES — editorial / refined aesthetic
@@ -1244,8 +1252,8 @@ export default function LMSAdminUI() {
         );
       }
       if (libraryTab === "qualification") {
-        const unitCount = units.filter(
-          (u) => u.qualification_id === item.id,
+        const unitCount = qualificationUnits.filter(
+          (qu) => qu.qualification_id === item.id,
         ).length;
         return (
           <tr
@@ -1987,6 +1995,8 @@ export default function LMSAdminUI() {
   // ENROLLMENT DETAIL — drill in to manage assignments, KSBs, OTJ, gateway
   // ============================================
   const [enrollDetailTab, setEnrollDetailTab] = useState("overview");
+  const [expandedKsbId, setExpandedKsbId] = useState(null);
+  const [ksbEdits, setKsbEdits] = useState({});
 
   const EnrollmentDetail = () => {
     const learner = getLearner(view.learnerId);
@@ -2135,8 +2145,20 @@ export default function LMSAdminUI() {
                     {enrollment.planned_end_date || "—"}
                   </div>
                   <div className="profile-meta-item">
-                    <Target size={12} /> Gateway:{" "}
+                    <Target size={12} /> Est. gateway:{" "}
                     {enrollment.estimated_gateway_date || "—"}
+                  </div>
+                  <div className="profile-meta-item">
+                    <Target size={12} /> Practical gateway:{" "}
+                    {enrollment.practical_gateway_date || "—"}
+                  </div>
+                  <div className="profile-meta-item">
+                    <Calendar size={12} /> EPA date:{" "}
+                    {enrollment.epa_date || "—"}
+                  </div>
+                  <div className="profile-meta-item">
+                    <CheckCircle2 size={12} /> Certificate:{" "}
+                    {enrollment.certificate_received_date || "—"}
                   </div>
                 </>
               )}
@@ -2321,6 +2343,22 @@ export default function LMSAdminUI() {
                         {a.ksb_links.length === 1 ? "" : "s"}
                       </div>
                     )}
+                    <button
+                      className="btn btn-ghost"
+                      style={{ flexShrink: 0, color: "var(--danger, #e53e3e)" }}
+                      onClick={() => {
+                        setLearnerAssignments(
+                          learnerAssignments.filter((a2) => a2.id !== a.id),
+                        );
+                        setLearnerAssignmentKsbs(
+                          learnerAssignmentKsbs.filter(
+                            (ak) => ak.learner_assignment_id !== a.id,
+                          ),
+                        );
+                      }}
+                    >
+                      Remove
+                    </button>
                   </div>
                 ))}
               </div>
@@ -2333,30 +2371,32 @@ export default function LMSAdminUI() {
             <div className="info-banner">
               <Target size={16} style={{ flexShrink: 0, marginTop: 1 }} />
               <div>
-                KSBs (Knowledge, Skills, Behaviours) are defined on the
-                apprenticeship template and instantiated per learner. Mark each
-                as achieved as evidence is gathered.
+                KSBs track per-learner achievement. Edit status, how the KSB was
+                met, and any evidence references inline. Expand a row to see
+                designed template coverage vs actual submitted evidence.
               </div>
             </div>
+
             <div className="toolbar">
               <div style={{ fontSize: 13, color: "var(--ink-soft)" }}>
                 {myKsbs.length} KSB{myKsbs.length === 1 ? "" : "s"} tracked
               </div>
-              <button
-                className="btn btn-primary"
-                onClick={() =>
-                  setModal({
-                    type: "init-ksbs",
-                    enrollment,
-                    learnerId: learner.id,
-                  })
-                }
-              >
-                {myKsbs.length === 0
-                  ? "Initialise KSBs from template"
-                  : "Re-sync from template"}
-              </button>
+              {myKsbs.length === 0 && (
+                <button
+                  className="btn btn-primary"
+                  onClick={() =>
+                    setModal({
+                      type: "init-ksbs",
+                      enrollment,
+                      learnerId: learner.id,
+                    })
+                  }
+                >
+                  Initialise KSBs from template
+                </button>
+              )}
             </div>
+
             {myKsbs.length === 0 ? (
               <div className="empty">
                 <div className="empty-icon">
@@ -2370,24 +2410,307 @@ export default function LMSAdminUI() {
                 </div>
               </div>
             ) : (
-              <div className="ksb-grid">
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {myKsbs.map((lk) => {
                   const ksb = ksbs.find((k) => k.id === lk.ksb_id);
+                  const draft = ksbEdits[lk.id] || {
+                    status: lk.status || "not started",
+                    met_by: lk.met_by || "",
+                    evidence_refs: lk.evidence_refs || "",
+                  };
+                  const isDirty =
+                    draft.status !== (lk.status || "not started") ||
+                    draft.met_by !== (lk.met_by || "") ||
+                    draft.evidence_refs !== (lk.evidence_refs || "");
+                  const isExpanded = expandedKsbId === lk.id;
+
+                  // Designed coverage from template-level mappings
+                  const covUnits = ksbUnitMappings
+                    .filter((m) => m.ksb_id === lk.ksb_id)
+                    .map((m) => units.find((u) => u.id === m.unit_id)?.title)
+                    .filter(Boolean);
+                  const covAssignments = ksbAssignmentMappings
+                    .filter((m) => m.ksb_id === lk.ksb_id)
+                    .map(
+                      (m) =>
+                        assignments.find((a) => a.id === m.assignment_id)
+                          ?.title,
+                    )
+                    .filter(Boolean);
+                  const covShortCourses = ksbShortCourseMappings
+                    .filter((m) => m.ksb_id === lk.ksb_id)
+                    .map(
+                      (m) =>
+                        shortCourses.find((sc) => sc.id === m.short_course_id)
+                          ?.title,
+                    )
+                    .filter(Boolean);
+                  const covQualifications = ksbQualificationMappings
+                    .filter((m) => m.ksb_id === lk.ksb_id)
+                    .map(
+                      (m) =>
+                        qualifications.find((q) => q.id === m.qualification_id)
+                          ?.title,
+                    )
+                    .filter(Boolean);
+                  const hasDesignedCoverage =
+                    covUnits.length +
+                      covAssignments.length +
+                      covShortCourses.length +
+                      covQualifications.length >
+                    0;
+
+                  // Actual evidence from per-learner records
+                  const linkedAssignments = learnerAssignmentKsbs
+                    .filter((ak) => ak.learner_ksb_id === lk.id)
+                    .map((ak) =>
+                      learnerAssignments.find(
+                        (la) => la.id === ak.learner_assignment_id,
+                      ),
+                    )
+                    .filter(Boolean);
+                  const linkedOtj = otjKsbLinks.filter(
+                    (ol) => ol.learner_ksb_id === lk.id,
+                  );
+
+                  const updateDraft = (field, value) =>
+                    setKsbEdits((prev) => ({
+                      ...prev,
+                      [lk.id]: { ...draft, [field]: value },
+                    }));
+
+                  const saveRow = () => {
+                    setLearnerKsbs(
+                      learnerKsbs.map((r) =>
+                        r.id === lk.id
+                          ? {
+                              ...r,
+                              status: draft.status,
+                              met_by: draft.met_by,
+                              evidence_refs: draft.evidence_refs,
+                            }
+                          : r,
+                      ),
+                    );
+                    setKsbEdits((prev) => {
+                      const next = { ...prev };
+                      delete next[lk.id];
+                      return next;
+                    });
+                  };
+
                   return (
-                    <div key={lk.id} className="ksb-card">
-                      <span className={`ksb-id ${ksb?.type || "K"}`}>
-                        {ksb?.code || lk.ksb_id}
-                      </span>
-                      <div className="ksb-desc">{ksb?.description || "—"}</div>
-                      <div className="ksb-status">
-                        {lk.status === "achieved" ? (
-                          <CheckCircle2 size={12} />
-                        ) : (
-                          <Circle size={12} />
-                        )}
-                        {lk.status || "not started"}
-                        {lk.met_by && ` · met via ${lk.met_by}`}
+                    <div
+                      key={lk.id}
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        overflow: "hidden",
+                        background: "var(--surface)",
+                      }}
+                    >
+                      {/* header row */}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 12,
+                          padding: "12px 14px",
+                        }}
+                      >
+                        <span
+                          className={`ksb-id ${ksb?.type || "K"}`}
+                          style={{ flexShrink: 0, marginTop: 2 }}
+                        >
+                          {ksb?.code || lk.ksb_id}
+                        </span>
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontSize: 13,
+                              color: "var(--ink)",
+                              lineHeight: 1.5,
+                              marginBottom: 8,
+                            }}
+                          >
+                            {ksb?.description || "—"}
+                          </div>
+
+                          {/* inline edit row */}
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "160px 1fr 1fr auto",
+                              gap: 6,
+                              alignItems: "center",
+                            }}
+                          >
+                            <select
+                              value={draft.status}
+                              onChange={(e) =>
+                                updateDraft("status", e.target.value)
+                              }
+                              style={{ fontSize: 12, padding: "3px 6px" }}
+                            >
+                              <option value="not started">Not started</option>
+                              <option value="in progress">In progress</option>
+                              <option value="achieved">Achieved</option>
+                            </select>
+                            <input
+                              value={draft.met_by}
+                              onChange={(e) =>
+                                updateDraft("met_by", e.target.value)
+                              }
+                              placeholder="Met by…"
+                              style={{ fontSize: 12, padding: "3px 6px" }}
+                            />
+                            <input
+                              value={draft.evidence_refs}
+                              onChange={(e) =>
+                                updateDraft("evidence_refs", e.target.value)
+                              }
+                              placeholder="Evidence refs…"
+                              style={{ fontSize: 12, padding: "3px 6px" }}
+                            />
+                            <button
+                              className="btn btn-primary"
+                              style={{
+                                fontSize: 12,
+                                padding: "3px 10px",
+                                opacity: isDirty ? 1 : 0.35,
+                                pointerEvents: isDirty ? "auto" : "none",
+                              }}
+                              onClick={saveRow}
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+
+                        <button
+                          className="btn btn-ghost"
+                          style={{ flexShrink: 0, fontSize: 11 }}
+                          onClick={() =>
+                            setExpandedKsbId(isExpanded ? null : lk.id)
+                          }
+                        >
+                          {isExpanded ? "Hide" : "Details"}
+                        </button>
                       </div>
+
+                      {/* expandable coverage + evidence */}
+                      {isExpanded && (
+                        <div
+                          style={{
+                            borderTop: "1px solid var(--border)",
+                            padding: "12px 14px",
+                            background: "var(--surface-alt, var(--bg))",
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: 16,
+                          }}
+                        >
+                          <div>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 600,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.06em",
+                                color: "var(--ink-light)",
+                                marginBottom: 6,
+                              }}
+                            >
+                              Designed coverage
+                            </div>
+                            {!hasDesignedCoverage ? (
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  color: "var(--ink-soft)",
+                                }}
+                              >
+                                No template mappings defined yet.
+                              </div>
+                            ) : (
+                              <ul
+                                style={{
+                                  margin: 0,
+                                  paddingLeft: 16,
+                                  fontSize: 12,
+                                  color: "var(--ink-soft)",
+                                  lineHeight: 1.7,
+                                }}
+                              >
+                                {covUnits.map((t, i) => (
+                                  <li key={`u${i}`}>Unit: {t}</li>
+                                ))}
+                                {covAssignments.map((t, i) => (
+                                  <li key={`a${i}`}>Assignment: {t}</li>
+                                ))}
+                                {covShortCourses.map((t, i) => (
+                                  <li key={`sc${i}`}>Short Course: {t}</li>
+                                ))}
+                                {covQualifications.map((t, i) => (
+                                  <li key={`q${i}`}>Qualification: {t}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+
+                          <div>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 600,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.06em",
+                                color: "var(--ink-light)",
+                                marginBottom: 6,
+                              }}
+                            >
+                              Actual evidence
+                            </div>
+                            {linkedAssignments.length === 0 &&
+                            linkedOtj.length === 0 ? (
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  color: "var(--ink-soft)",
+                                }}
+                              >
+                                No evidence linked yet.
+                              </div>
+                            ) : (
+                              <ul
+                                style={{
+                                  margin: 0,
+                                  paddingLeft: 16,
+                                  fontSize: 12,
+                                  color: "var(--ink-soft)",
+                                  lineHeight: 1.7,
+                                }}
+                              >
+                                {linkedAssignments.map((la) => (
+                                  <li key={la.id}>
+                                    Assignment "{la.title}"
+                                    {la.submission_date
+                                      ? ` — submitted ${la.submission_date}`
+                                      : " (not yet submitted)"}
+                                  </li>
+                                ))}
+                                {linkedOtj.length > 0 && (
+                                  <li>
+                                    {linkedOtj.length} OTJ log
+                                    {linkedOtj.length === 1 ? "" : "s"}
+                                  </li>
+                                )}
+                              </ul>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -2565,9 +2888,22 @@ export default function LMSAdminUI() {
         short_course: "Short Course",
       };
 
+      const idPrefixMap = {
+        apprenticeship: "app",
+        qualification: "qual",
+        unit: "unit",
+        short_course: "sc",
+      };
+      const withVersion = { apprenticeship: true, qualification: true };
+
       const handleSave = () => {
-        const id = newId(t);
-        const item = { id, name: formData.name, ...formData };
+        const id = newId(idPrefixMap[t]);
+        const item = {
+          id,
+          name: formData.name,
+          ...formData,
+          ...(withVersion[t] ? { template_version: "v1" } : {}),
+        };
         if (t === "apprenticeship")
           setApprenticeships([...apprenticeships, item]);
         if (t === "qualification") setQualifications([...qualifications, item]);
@@ -2688,7 +3024,7 @@ export default function LMSAdminUI() {
                         placeholder="3 months"
                       />
                     </div>
-                    {/* <div className="field">
+                    <div className="field">
                       <label>Funding body</label>
                       <input
                         value={formData.funding_body || ""}
@@ -2699,8 +3035,8 @@ export default function LMSAdminUI() {
                           })
                         }
                       />
-                    </div> */}
-                    {/* <div className="field">
+                    </div>
+                    <div className="field">
                       <label>Awarding body</label>
                       <input
                         value={formData.awarding_body || ""}
@@ -2711,7 +3047,7 @@ export default function LMSAdminUI() {
                           })
                         }
                       />
-                    </div> */}
+                    </div>
                     <div className="field">
                       <label>Min OTJ hours</label>
                       <input
@@ -2837,6 +3173,22 @@ export default function LMSAdminUI() {
                         />
                         <span>Has assignments</span>
                       </label>
+                      <label
+                        className={`checkbox-row ${formData.is_parent_qual ? "checked" : ""}`}
+                        style={{ flex: 1 }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!formData.is_parent_qual}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              is_parent_qual: e.target.checked,
+                            })
+                          }
+                        />
+                        <span>Is parent qualification</span>
+                      </label>
                     </div>
                   </>
                 )}
@@ -2883,25 +3235,6 @@ export default function LMSAdminUI() {
                         <option value="">Select…</option>
                         <option>mandatory</option>
                         <option>elective</option>
-                      </select>
-                    </div>
-                    <div className="field">
-                      <label>Sits inside qualification</label>
-                      <select
-                        value={formData.qualification_id || ""}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            qualification_id: e.target.value,
-                          })
-                        }
-                      >
-                        <option value="">Standalone</option>
-                        {qualifications.map((q) => (
-                          <option key={q.id} value={q.id}>
-                            {q.name}
-                          </option>
-                        ))}
                       </select>
                     </div>
                   </>
@@ -3017,27 +3350,42 @@ export default function LMSAdminUI() {
         short_course: "Short Course",
       };
 
-      // Show structural composition
-      const childQuals =
+      // Show structural composition — via junction tables
+      const attachedQualJunctions =
         templateType === "apprenticeship"
-          ? qualifications.filter((q) =>
-              (item.qualification_ids || []).includes(q.id),
+          ? apprenticeshipQualifications.filter(
+              (aq) => aq.apprenticeship_id === item.id,
             )
           : [];
-      const childCourses =
+      const childQuals = attachedQualJunctions
+        .map((aq) => qualifications.find((q) => q.id === aq.qualification_id))
+        .filter(Boolean);
+
+      const attachedCourseJunctions =
         templateType === "apprenticeship"
-          ? shortCourses.filter((s) =>
-              (item.short_course_ids || []).includes(s.id),
+          ? apprenticeshipShortCourses.filter(
+              (ac) => ac.apprenticeship_id === item.id,
             )
           : [];
+      const childCourses = attachedCourseJunctions
+        .map((ac) => shortCourses.find((s) => s.id === ac.short_course_id))
+        .filter(Boolean);
       const childUnits =
         templateType === "qualification"
-          ? units.filter((u) => u.qualification_id === item.id)
+          ? qualificationUnits
+              .filter((qu) => qu.qualification_id === item.id)
+              .map((qu) => units.find((u) => u.id === qu.unit_id))
+              .filter(Boolean)
           : [];
       const myKsbs =
         templateType === "apprenticeship"
           ? ksbs.filter((k) => k.apprenticeship_id === item.id)
           : [];
+      const myAssignments = assignments.filter(
+        (a) =>
+          a.parent_template_type === templateType &&
+          a.parent_template_id === item.id,
+      );
 
       return (
         <div className="modal-backdrop" onClick={closeModal}>
@@ -3140,19 +3488,19 @@ export default function LMSAdminUI() {
                   <div style={{ marginBottom: 24 }}>
                     <div className="section-header">
                       <div className="section-tag">
-                        Composition · Qualifications
+                        Qualifications in this apprenticeship
                       </div>
                       <button
                         className="btn btn-ghost"
                         onClick={() =>
                           setModal({
                             type: "compose-apprenticeship",
-                            item,
+                            apprenticeshipId: item.id,
                             mode: "qualifications",
                           })
                         }
                       >
-                        + Add
+                        + Add qualification
                       </button>
                     </div>
                     {childQuals.length === 0 ? (
@@ -3166,7 +3514,33 @@ export default function LMSAdminUI() {
                             <GraduationCap size={14} color="var(--moss)" />
                             <div className="data-item-main">
                               <div className="data-item-title">{q.name}</div>
+                              {q.qualification_level && (
+                                <div className="data-item-sub">
+                                  Level {q.qualification_level}
+                                </div>
+                              )}
                             </div>
+                            <button
+                              className="btn btn-ghost"
+                              style={{
+                                fontSize: 12,
+                                padding: "2px 8px",
+                                color: "var(--ink-light)",
+                              }}
+                              onClick={() =>
+                                setApprenticeshipQualifications(
+                                  apprenticeshipQualifications.filter(
+                                    (aq) =>
+                                      !(
+                                        aq.apprenticeship_id === item.id &&
+                                        aq.qualification_id === q.id
+                                      ),
+                                  ),
+                                )
+                              }
+                            >
+                              Remove
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -3175,19 +3549,19 @@ export default function LMSAdminUI() {
                   <div style={{ marginBottom: 24 }}>
                     <div className="section-header">
                       <div className="section-tag">
-                        Composition · Short Courses
+                        Short courses in this apprenticeship
                       </div>
                       <button
                         className="btn btn-ghost"
                         onClick={() =>
                           setModal({
                             type: "compose-apprenticeship",
-                            item,
+                            apprenticeshipId: item.id,
                             mode: "short_courses",
                           })
                         }
                       >
-                        + Add
+                        + Add short course
                       </button>
                     </div>
                     {childCourses.length === 0 ? (
@@ -3201,7 +3575,33 @@ export default function LMSAdminUI() {
                             <BookOpen size={14} color="var(--slate)" />
                             <div className="data-item-main">
                               <div className="data-item-title">{s.name}</div>
+                              {s.course_code && (
+                                <div className="data-item-sub">
+                                  {s.course_code}
+                                </div>
+                              )}
                             </div>
+                            <button
+                              className="btn btn-ghost"
+                              style={{
+                                fontSize: 12,
+                                padding: "2px 8px",
+                                color: "var(--ink-light)",
+                              }}
+                              onClick={() =>
+                                setApprenticeshipShortCourses(
+                                  apprenticeshipShortCourses.filter(
+                                    (ac) =>
+                                      !(
+                                        ac.apprenticeship_id === item.id &&
+                                        ac.short_course_id === s.id
+                                      ),
+                                  ),
+                                )
+                              }
+                            >
+                              Remove
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -3209,9 +3609,7 @@ export default function LMSAdminUI() {
                   </div>
                   <div>
                     <div className="section-header">
-                      <div className="section-tag">
-                        KSBs · Knowledge, Skills, Behaviours
-                      </div>
+                      <div className="section-tag">KSBs</div>
                       <button
                         className="btn btn-ghost"
                         onClick={() =>
@@ -3229,11 +3627,161 @@ export default function LMSAdminUI() {
                         No KSBs defined yet.
                       </div>
                     ) : (
-                      <div className="ksb-grid">
-                        {myKsbs.map((k) => (
-                          <div key={k.id} className="ksb-card">
-                            <span className={`ksb-id ${k.type}`}>{k.code}</span>
-                            <div className="ksb-desc">{k.description}</div>
+                      <div className="data-list">
+                        {myKsbs.map((k) => {
+                          const ksbMappingCount =
+                            ksbUnitMappings.filter((m) => m.ksb_id === k.id)
+                              .length +
+                            ksbAssignmentMappings.filter(
+                              (m) => m.ksb_id === k.id,
+                            ).length +
+                            ksbShortCourseMappings.filter(
+                              (m) => m.ksb_id === k.id,
+                            ).length +
+                            ksbQualificationMappings.filter(
+                              (m) => m.ksb_id === k.id,
+                            ).length;
+                          return (
+                            <div
+                              key={k.id}
+                              className="data-item"
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 10,
+                              }}
+                            >
+                              <span
+                                className={`ksb-id ${k.type}`}
+                                style={{ flexShrink: 0 }}
+                              >
+                                {k.code}
+                              </span>
+                              <span
+                                style={{
+                                  flexShrink: 0,
+                                  fontSize: 12,
+                                  color: "var(--ink-light)",
+                                  textTransform: "uppercase",
+                                }}
+                              >
+                                {k.type}
+                              </span>
+                              <span
+                                style={{
+                                  flexShrink: 0,
+                                  color: "var(--ink-light)",
+                                }}
+                              >
+                                ·
+                              </span>
+                              <span
+                                className="data-item-main"
+                                style={{ flex: 1, fontSize: 13 }}
+                              >
+                                {k.description}
+                              </span>
+                              {ksbMappingCount > 0 && (
+                                <span
+                                  style={{
+                                    flexShrink: 0,
+                                    fontSize: 11,
+                                    background: "var(--surface-2, #e8eaf6)",
+                                    color: "var(--ink-light)",
+                                    borderRadius: 10,
+                                    padding: "2px 8px",
+                                  }}
+                                >
+                                  {ksbMappingCount} mapping
+                                  {ksbMappingCount !== 1 ? "s" : ""}
+                                </span>
+                              )}
+                              <button
+                                className="btn btn-ghost"
+                                style={{ flexShrink: 0 }}
+                                onClick={() =>
+                                  setModal({
+                                    type: "edit-ksb-mappings",
+                                    ksbId: k.id,
+                                    apprenticeshipId: item.id,
+                                  })
+                                }
+                              >
+                                Edit mappings
+                              </button>
+                              <button
+                                className="btn btn-ghost"
+                                style={{
+                                  flexShrink: 0,
+                                  color: "var(--danger, #e53e3e)",
+                                }}
+                                onClick={() =>
+                                  setKsbs(ksbs.filter((k2) => k2.id !== k.id))
+                                }
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 24 }}>
+                    <div className="section-header">
+                      <div className="section-tag">Assignments</div>
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() =>
+                          setModal({
+                            type: "create-assignment-template",
+                            parentType: templateType,
+                            parentId: item.id,
+                            returnItem: item,
+                          })
+                        }
+                      >
+                        + New assignment
+                      </button>
+                    </div>
+                    {myAssignments.length === 0 ? (
+                      <div style={{ fontSize: 13, color: "var(--ink-light)" }}>
+                        No assignments defined yet.
+                      </div>
+                    ) : (
+                      <div className="data-list">
+                        {myAssignments.map((a) => (
+                          <div
+                            key={a.id}
+                            className="data-item"
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                            }}
+                          >
+                            <div className="data-item-main" style={{ flex: 1 }}>
+                              <div className="data-item-title">{a.title}</div>
+                              {a.description && (
+                                <div className="data-item-sub">
+                                  {a.description}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              className="btn btn-ghost"
+                              style={{
+                                flexShrink: 0,
+                                color: "var(--danger, #e53e3e)",
+                              }}
+                              onClick={() =>
+                                setAssignments(
+                                  assignments.filter((a2) => a2.id !== a.id),
+                                )
+                              }
+                            >
+                              Remove
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -3246,25 +3794,266 @@ export default function LMSAdminUI() {
                 <div>
                   <div className="section-header">
                     <div className="section-tag">
-                      Units inside this qualification
+                      Units in this qualification
                     </div>
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() =>
+                        setModal({
+                          type: "add-qual-unit",
+                          qualificationId: item.id,
+                        })
+                      }
+                    >
+                      + Add unit
+                    </button>
                   </div>
                   {childUnits.length === 0 ? (
                     <div style={{ fontSize: 13, color: "var(--ink-light)" }}>
-                      No units. Create units in the library and assign them to
-                      this qualification.
+                      No units attached. Create units in the library then add
+                      them here.
                     </div>
                   ) : (
                     <div className="data-list">
-                      {childUnits.map((u) => (
-                        <div key={u.id} className="data-item">
-                          <Layers size={14} color="var(--gold)" />
-                          <div className="data-item-main">
-                            <div className="data-item-title">{u.name}</div>
-                            <div className="data-item-sub">
-                              {u.unit_code} · {u.mandatory_or_elective}
+                      {qualificationUnits
+                        .filter((qu) => qu.qualification_id === item.id)
+                        .sort((a, b) => (a.sequence || 0) - (b.sequence || 0))
+                        .map((ju) => {
+                          const u = units.find((u) => u.id === ju.unit_id);
+                          if (!u) return null;
+                          return (
+                            <div
+                              key={ju.unit_id}
+                              className="data-item"
+                              style={{ gap: 10, flexWrap: "wrap" }}
+                            >
+                              <Layers size={14} color="var(--gold)" />
+                              <div
+                                className="data-item-main"
+                                style={{ flex: 1 }}
+                              >
+                                <div className="data-item-title">{u.name}</div>
+                                {u.unit_code && (
+                                  <div className="data-item-sub">
+                                    {u.unit_code}
+                                  </div>
+                                )}
+                              </div>
+                              {/* Sequence */}
+                              <label
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  fontSize: 12,
+                                  color: "var(--ink-soft)",
+                                }}
+                              >
+                                Seq
+                                <input
+                                  type="number"
+                                  value={ju.sequence ?? ""}
+                                  min={1}
+                                  style={{
+                                    width: 48,
+                                    padding: "2px 6px",
+                                    fontSize: 12,
+                                    border: "1px solid var(--line)",
+                                    borderRadius: 4,
+                                  }}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value, 10);
+                                    setQualificationUnits(
+                                      qualificationUnits.map((r) =>
+                                        r.qualification_id === item.id &&
+                                        r.unit_id === ju.unit_id
+                                          ? {
+                                              ...r,
+                                              sequence: isNaN(val)
+                                                ? r.sequence
+                                                : val,
+                                            }
+                                          : r,
+                                      ),
+                                    );
+                                  }}
+                                />
+                              </label>
+                              {/* Mandatory toggle */}
+                              <label
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  fontSize: 12,
+                                  color: "var(--ink-soft)",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={!!ju.mandatory}
+                                  onChange={(e) =>
+                                    setQualificationUnits(
+                                      qualificationUnits.map((r) =>
+                                        r.qualification_id === item.id &&
+                                        r.unit_id === ju.unit_id
+                                          ? {
+                                              ...r,
+                                              mandatory: e.target.checked,
+                                            }
+                                          : r,
+                                      ),
+                                    )
+                                  }
+                                />
+                                Mandatory
+                              </label>
+                              <button
+                                className="btn btn-ghost"
+                                style={{
+                                  fontSize: 12,
+                                  padding: "2px 8px",
+                                  color: "var(--ink-light)",
+                                }}
+                                onClick={() =>
+                                  setQualificationUnits(
+                                    qualificationUnits.filter(
+                                      (r) =>
+                                        !(
+                                          r.qualification_id === item.id &&
+                                          r.unit_id === ju.unit_id
+                                        ),
+                                    ),
+                                  )
+                                }
+                              >
+                                Remove
+                              </button>
                             </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                  <div style={{ marginTop: 24 }}>
+                    <div className="section-header">
+                      <div className="section-tag">Assignments</div>
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() =>
+                          setModal({
+                            type: "create-assignment-template",
+                            parentType: templateType,
+                            parentId: item.id,
+                            returnItem: item,
+                          })
+                        }
+                      >
+                        + New assignment
+                      </button>
+                    </div>
+                    {myAssignments.length === 0 ? (
+                      <div style={{ fontSize: 13, color: "var(--ink-light)" }}>
+                        No assignments defined yet.
+                      </div>
+                    ) : (
+                      <div className="data-list">
+                        {myAssignments.map((a) => (
+                          <div
+                            key={a.id}
+                            className="data-item"
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                            }}
+                          >
+                            <div className="data-item-main" style={{ flex: 1 }}>
+                              <div className="data-item-title">{a.title}</div>
+                              {a.description && (
+                                <div className="data-item-sub">
+                                  {a.description}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              className="btn btn-ghost"
+                              style={{
+                                flexShrink: 0,
+                                color: "var(--danger, #e53e3e)",
+                              }}
+                              onClick={() =>
+                                setAssignments(
+                                  assignments.filter((a2) => a2.id !== a.id),
+                                )
+                              }
+                            >
+                              Remove
+                            </button>
                           </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {templateType === "unit" && (
+                <div style={{ marginTop: 24 }}>
+                  <div className="section-header">
+                    <div className="section-tag">Assignments</div>
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() =>
+                        setModal({
+                          type: "create-assignment-template",
+                          parentType: templateType,
+                          parentId: item.id,
+                          returnItem: item,
+                        })
+                      }
+                    >
+                      + New assignment
+                    </button>
+                  </div>
+                  {myAssignments.length === 0 ? (
+                    <div style={{ fontSize: 13, color: "var(--ink-light)" }}>
+                      No assignments defined yet.
+                    </div>
+                  ) : (
+                    <div className="data-list">
+                      {myAssignments.map((a) => (
+                        <div
+                          key={a.id}
+                          className="data-item"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                          }}
+                        >
+                          <div className="data-item-main" style={{ flex: 1 }}>
+                            <div className="data-item-title">{a.title}</div>
+                            {a.description && (
+                              <div className="data-item-sub">
+                                {a.description}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            className="btn btn-ghost"
+                            style={{
+                              flexShrink: 0,
+                              color: "var(--danger, #e53e3e)",
+                            }}
+                            onClick={() =>
+                              setAssignments(
+                                assignments.filter((a2) => a2.id !== a.id),
+                              )
+                            }
+                          >
+                            Remove
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -3277,65 +4066,165 @@ export default function LMSAdminUI() {
       );
     }
 
-    // === COMPOSE APPRENTICESHIP (attach quals/courses) ===
-    if (modal.type === "compose-apprenticeship") {
-      const { item, mode } = modal;
-      const pool = mode === "qualifications" ? qualifications : shortCourses;
-      const fieldKey =
-        mode === "qualifications" ? "qualification_ids" : "short_course_ids";
-      const current = item[fieldKey] || [];
-
-      const toggle = (id) => {
-        const next = current.includes(id)
-          ? current.filter((x) => x !== id)
-          : [...current, id];
-        const updated = { ...item, [fieldKey]: next };
-        setApprenticeships(
-          apprenticeships.map((a) => (a.id === item.id ? updated : a)),
-        );
-        setModal({ ...modal, item: updated });
+    // === CREATE ASSIGNMENT TEMPLATE ===
+    if (modal.type === "create-assignment-template") {
+      const handleSave = () => {
+        if (!formData.title) return;
+        setAssignments([
+          ...assignments,
+          {
+            id: newId("asn"),
+            parent_template_type: modal.parentType,
+            parent_template_id: modal.parentId,
+            title: formData.title,
+            description: formData.description || "",
+          },
+        ]);
+        setModal({
+          type: "view-template",
+          templateType: modal.parentType,
+          item: modal.returnItem,
+        });
+        setFormData({});
       };
+      return (
+        <div className="modal-backdrop" onClick={closeModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">New assignment</div>
+              <button className="btn btn-ghost" onClick={closeModal}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-grid">
+                <div className="field form-grid-full">
+                  <label>Title</label>
+                  <input
+                    value={formData.title || ""}
+                    onChange={(e) =>
+                      setFormData({ ...formData, title: e.target.value })
+                    }
+                    placeholder="e.g. Reflective journal"
+                    autoFocus
+                  />
+                </div>
+                <div className="field form-grid-full">
+                  <label>Description</label>
+                  <textarea
+                    value={formData.description || ""}
+                    onChange={(e) =>
+                      setFormData({ ...formData, description: e.target.value })
+                    }
+                    placeholder="What this assignment covers…"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={closeModal}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleSave}
+                disabled={!formData.title}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // === COMPOSE APPRENTICESHIP (attach quals/courses via junction) ===
+    if (modal.type === "compose-apprenticeship") {
+      const { apprenticeshipId, mode } = modal;
+      const isQuals = mode === "qualifications";
+      const pool = isQuals ? qualifications : shortCourses;
+
+      // IDs already attached
+      const attachedIds = isQuals
+        ? apprenticeshipQualifications
+            .filter((aq) => aq.apprenticeship_id === apprenticeshipId)
+            .map((aq) => aq.qualification_id)
+        : apprenticeshipShortCourses
+            .filter((ac) => ac.apprenticeship_id === apprenticeshipId)
+            .map((ac) => ac.short_course_id);
+
+      const available = pool.filter((p) => !attachedIds.includes(p.id));
+
+      const addItem = (id) => {
+        if (isQuals) {
+          const nextSeq =
+            apprenticeshipQualifications.filter(
+              (aq) => aq.apprenticeship_id === apprenticeshipId,
+            ).length + 1;
+          setApprenticeshipQualifications([
+            ...apprenticeshipQualifications,
+            {
+              apprenticeship_id: apprenticeshipId,
+              qualification_id: id,
+              mandatory: true,
+              sequence: nextSeq,
+            },
+          ]);
+        } else {
+          const nextSeq =
+            apprenticeshipShortCourses.filter(
+              (ac) => ac.apprenticeship_id === apprenticeshipId,
+            ).length + 1;
+          setApprenticeshipShortCourses([
+            ...apprenticeshipShortCourses,
+            {
+              apprenticeship_id: apprenticeshipId,
+              short_course_id: id,
+              mandatory: true,
+              sequence: nextSeq,
+            },
+          ]);
+        }
+      };
+
+      const apprItem = apprenticeships.find((a) => a.id === apprenticeshipId);
 
       return (
         <div className="modal-backdrop" onClick={closeModal}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div>
-                <div className="section-tag">Compose apprenticeship</div>
+                <div className="section-tag">Add to apprenticeship</div>
                 <div className="modal-title">
-                  Attach{" "}
-                  {mode === "qualifications"
-                    ? "qualifications"
-                    : "short courses"}
+                  {isQuals ? "Add qualification" : "Add short course"}
                 </div>
-                <div className="modal-sub">Tap to toggle.</div>
+                <div className="modal-sub">
+                  Select to attach. Already attached items are hidden.
+                </div>
               </div>
               <button className="btn btn-ghost" onClick={closeModal}>
                 <X size={18} />
               </button>
             </div>
             <div className="modal-body">
-              {pool.length === 0 ? (
+              {available.length === 0 ? (
                 <div className="empty-text">
-                  No{" "}
-                  {mode === "qualifications"
-                    ? "qualifications"
-                    : "short courses"}{" "}
-                  in the library yet. Create them first.
+                  {pool.length === 0
+                    ? `No ${isQuals ? "qualifications" : "short courses"} in the library yet. Create them first.`
+                    : `All ${isQuals ? "qualifications" : "short courses"} are already attached.`}
                 </div>
               ) : (
                 <div className="picker-list">
-                  {pool.map((p) => (
+                  {available.map((p) => (
                     <div
                       key={p.id}
-                      className={`picker-item ${current.includes(p.id) ? "selected" : ""}`}
-                      onClick={() => toggle(p.id)}
+                      className="picker-item"
+                      onClick={() => {
+                        addItem(p.id);
+                        // stay open so user can add multiple; modal re-renders with updated state
+                      }}
                     >
-                      {current.includes(p.id) ? (
-                        <CheckCircle2 size={16} color="var(--accent)" />
-                      ) : (
-                        <Circle size={16} color="var(--ink-light)" />
-                      )}
+                      <Circle size={16} color="var(--ink-light)" />
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 500, fontSize: 14 }}>
                           {p.name}
@@ -3357,16 +4246,759 @@ export default function LMSAdminUI() {
             <div className="modal-footer">
               <button
                 className="btn btn-primary"
-                onClick={() => {
-                  const fresh =
-                    apprenticeships.find((a) => a.id === item.id) || item;
+                onClick={() =>
                   setModal({
                     type: "view-template",
                     templateType: "apprenticeship",
-                    item: fresh,
-                  });
-                }}
+                    item: apprItem || { id: apprenticeshipId },
+                  })
+                }
               >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // === ADD UNIT TO QUALIFICATION ===
+    if (modal.type === "add-qual-unit") {
+      const { qualificationId } = modal;
+      const attachedUnitIds = qualificationUnits
+        .filter((qu) => qu.qualification_id === qualificationId)
+        .map((qu) => qu.unit_id);
+      const available = units.filter((u) => !attachedUnitIds.includes(u.id));
+      const qualItem = qualifications.find((q) => q.id === qualificationId);
+
+      return (
+        <div className="modal-backdrop" onClick={closeModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <div className="section-tag">Add to qualification</div>
+                <div className="modal-title">Add unit</div>
+                <div className="modal-sub">
+                  Select to attach. Already attached units are hidden.
+                </div>
+              </div>
+              <button className="btn btn-ghost" onClick={closeModal}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="modal-body">
+              {available.length === 0 ? (
+                <div className="empty-text">
+                  {units.length === 0
+                    ? "No units in the library yet. Create units first."
+                    : "All units are already attached to this qualification."}
+                </div>
+              ) : (
+                <div className="picker-list">
+                  {available.map((u) => (
+                    <div
+                      key={u.id}
+                      className="picker-item"
+                      onClick={() => {
+                        const nextSeq =
+                          qualificationUnits.filter(
+                            (qu) => qu.qualification_id === qualificationId,
+                          ).length + 1;
+                        setQualificationUnits([
+                          ...qualificationUnits,
+                          {
+                            qualification_id: qualificationId,
+                            unit_id: u.id,
+                            mandatory: true,
+                            sequence: nextSeq,
+                          },
+                        ]);
+                      }}
+                    >
+                      <Circle size={16} color="var(--ink-light)" />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 500, fontSize: 14 }}>
+                          {u.name}
+                        </div>
+                        {u.unit_code && (
+                          <div
+                            style={{ fontSize: 12, color: "var(--ink-light)" }}
+                          >
+                            {u.unit_code}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                className="btn btn-primary"
+                onClick={() =>
+                  setModal({
+                    type: "view-template",
+                    templateType: "qualification",
+                    item: qualItem || { id: qualificationId },
+                  })
+                }
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // === EDIT KSB MAPPINGS ===
+    if (modal.type === "edit-ksb-mappings") {
+      const ksb = ksbs.find((k) => k.id === modal.ksbId);
+      if (!ksb) return null;
+
+      const appId = modal.apprenticeshipId;
+
+      // Scoped item computation
+      const attachedQualIds = apprenticeshipQualifications
+        .filter((aq) => aq.apprenticeship_id === appId)
+        .map((aq) => aq.qualification_id);
+      const scopedUnitIds = qualificationUnits
+        .filter((qu) => attachedQualIds.includes(qu.qualification_id))
+        .map((qu) => qu.unit_id);
+      const scopedScIds = apprenticeshipShortCourses
+        .filter((ac) => ac.apprenticeship_id === appId)
+        .map((ac) => ac.short_course_id);
+      const scopedAssignmentParents = new Set([
+        appId,
+        ...attachedQualIds,
+        ...scopedUnitIds,
+      ]);
+
+      const scopedQuals = qualifications.filter((q) =>
+        attachedQualIds.includes(q.id),
+      );
+      const scopedUnits = units.filter((u) => scopedUnitIds.includes(u.id));
+      const scopedScs = shortCourses.filter((s) => scopedScIds.includes(s.id));
+      const scopedAssignments = assignments.filter((a) =>
+        scopedAssignmentParents.has(a.parent_template_id),
+      );
+
+      // Current mappings for this KSB
+      const myUnitMaps = ksbUnitMappings.filter(
+        (m) => m.ksb_id === modal.ksbId,
+      );
+      const myAssignmentMaps = ksbAssignmentMappings.filter(
+        (m) => m.ksb_id === modal.ksbId,
+      );
+      const myScMaps = ksbShortCourseMappings.filter(
+        (m) => m.ksb_id === modal.ksbId,
+      );
+      const myQualMaps = ksbQualificationMappings.filter(
+        (m) => m.ksb_id === modal.ksbId,
+      );
+
+      const mappedUnitIds = new Set(myUnitMaps.map((m) => m.unit_id));
+      const mappedAssignmentIds = new Set(
+        myAssignmentMaps.map((m) => m.assignment_id),
+      );
+      const mappedScIds = new Set(myScMaps.map((m) => m.short_course_id));
+      const mappedQualIds = new Set(myQualMaps.map((m) => m.qualification_id));
+
+      const pickableUnits = scopedUnits.filter((u) => !mappedUnitIds.has(u.id));
+      const pickableAssignments = scopedAssignments.filter(
+        (a) => !mappedAssignmentIds.has(a.id),
+      );
+      const pickableScs = scopedScs.filter((s) => !mappedScIds.has(s.id));
+      const pickableQuals = scopedQuals.filter((q) => !mappedQualIds.has(q.id));
+
+      return (
+        <div className="modal-backdrop" onClick={closeModal}>
+          <div
+            className="modal modal-wide"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div>
+                <div className="modal-title">Edit KSB Mappings</div>
+                <div
+                  className="modal-sub"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginTop: 4,
+                  }}
+                >
+                  <span className={`ksb-id ${ksb.type}`}>{ksb.code}</span>
+                  <span style={{ fontSize: 13, color: "var(--ink-light)" }}>
+                    {ksb.description}
+                  </span>
+                </div>
+              </div>
+              <button className="btn btn-ghost" onClick={closeModal}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="modal-body">
+              {/* ── Section 1: Units ── */}
+              <div style={{ marginBottom: 28 }}>
+                <div className="section-tag" style={{ marginBottom: 8 }}>
+                  Mapped Units
+                </div>
+                {myUnitMaps.length === 0 ? (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--ink-light)",
+                      marginBottom: 8,
+                    }}
+                  >
+                    No units mapped yet.
+                  </div>
+                ) : (
+                  <div className="data-list" style={{ marginBottom: 8 }}>
+                    {myUnitMaps.map((m) => {
+                      const u = units.find((x) => x.id === m.unit_id);
+                      return (
+                        <div
+                          key={m.unit_id}
+                          className="data-item"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <span
+                            className="data-item-main"
+                            style={{ flex: 1, fontSize: 13 }}
+                          >
+                            {u ? u.name : m.unit_id}
+                          </span>
+                          {u && (
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: "var(--ink-light)",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {u.unit_code}
+                            </span>
+                          )}
+                          <input
+                            style={{ width: 180, fontSize: 12 }}
+                            placeholder="Coverage notes…"
+                            value={m.coverage_notes || ""}
+                            onChange={(e) =>
+                              setKsbUnitMappings(
+                                ksbUnitMappings.map((x) =>
+                                  x.ksb_id === m.ksb_id &&
+                                  x.unit_id === m.unit_id
+                                    ? { ...x, coverage_notes: e.target.value }
+                                    : x,
+                                ),
+                              )
+                            }
+                          />
+                          <button
+                            className="btn btn-ghost"
+                            style={{
+                              color: "var(--danger, #e53e3e)",
+                              flexShrink: 0,
+                            }}
+                            onClick={() =>
+                              setKsbUnitMappings(
+                                ksbUnitMappings.filter(
+                                  (x) =>
+                                    !(
+                                      x.ksb_id === m.ksb_id &&
+                                      x.unit_id === m.unit_id
+                                    ),
+                                ),
+                              )
+                            }
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {scopedUnits.length === 0 ? (
+                  <div style={{ fontSize: 12, color: "var(--ink-light)" }}>
+                    No units in scope — attach qualifications with units to this
+                    apprenticeship first.
+                  </div>
+                ) : pickableUnits.length > 0 ? (
+                  <div
+                    style={{ display: "flex", gap: 8, alignItems: "center" }}
+                  >
+                    <select
+                      style={{ flex: 1 }}
+                      value={formData.unitPick || ""}
+                      onChange={(e) =>
+                        setFormData({ ...formData, unitPick: e.target.value })
+                      }
+                    >
+                      <option value="">— select unit —</option>
+                      {pickableUnits.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      style={{ width: 180, fontSize: 12 }}
+                      placeholder="Coverage notes…"
+                      value={formData.unitNotes || ""}
+                      onChange={(e) =>
+                        setFormData({ ...formData, unitNotes: e.target.value })
+                      }
+                    />
+                    <button
+                      className="btn btn-primary"
+                      disabled={!formData.unitPick}
+                      onClick={() => {
+                        setKsbUnitMappings([
+                          ...ksbUnitMappings,
+                          {
+                            ksb_id: modal.ksbId,
+                            unit_id: formData.unitPick,
+                            coverage_notes: formData.unitNotes || "",
+                          },
+                        ]);
+                        setFormData({
+                          ...formData,
+                          unitPick: "",
+                          unitNotes: "",
+                        });
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: "var(--ink-light)" }}>
+                    All scoped units are already mapped.
+                  </div>
+                )}
+              </div>
+
+              {/* ── Section 2: Assignments ── */}
+              <div style={{ marginBottom: 28 }}>
+                <div className="section-tag" style={{ marginBottom: 8 }}>
+                  Mapped Assignments
+                </div>
+                {myAssignmentMaps.length === 0 ? (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--ink-light)",
+                      marginBottom: 8,
+                    }}
+                  >
+                    No assignments mapped yet.
+                  </div>
+                ) : (
+                  <div className="data-list" style={{ marginBottom: 8 }}>
+                    {myAssignmentMaps.map((m) => {
+                      const a = assignments.find(
+                        (x) => x.id === m.assignment_id,
+                      );
+                      return (
+                        <div
+                          key={m.assignment_id}
+                          className="data-item"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <span
+                            className="data-item-main"
+                            style={{ flex: 1, fontSize: 13 }}
+                          >
+                            {a ? a.name : m.assignment_id}
+                          </span>
+                          <input
+                            style={{ width: 180, fontSize: 12 }}
+                            placeholder="Coverage notes…"
+                            value={m.coverage_notes || ""}
+                            onChange={(e) =>
+                              setKsbAssignmentMappings(
+                                ksbAssignmentMappings.map((x) =>
+                                  x.ksb_id === m.ksb_id &&
+                                  x.assignment_id === m.assignment_id
+                                    ? { ...x, coverage_notes: e.target.value }
+                                    : x,
+                                ),
+                              )
+                            }
+                          />
+                          <button
+                            className="btn btn-ghost"
+                            style={{
+                              color: "var(--danger, #e53e3e)",
+                              flexShrink: 0,
+                            }}
+                            onClick={() =>
+                              setKsbAssignmentMappings(
+                                ksbAssignmentMappings.filter(
+                                  (x) =>
+                                    !(
+                                      x.ksb_id === m.ksb_id &&
+                                      x.assignment_id === m.assignment_id
+                                    ),
+                                ),
+                              )
+                            }
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {scopedAssignments.length === 0 ? (
+                  <div style={{ fontSize: 12, color: "var(--ink-light)" }}>
+                    No assignments in scope for this apprenticeship.
+                  </div>
+                ) : pickableAssignments.length > 0 ? (
+                  <div
+                    style={{ display: "flex", gap: 8, alignItems: "center" }}
+                  >
+                    <select
+                      style={{ flex: 1 }}
+                      value={formData.assignmentPick || ""}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          assignmentPick: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="">— select assignment —</option>
+                      {pickableAssignments.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      style={{ width: 180, fontSize: 12 }}
+                      placeholder="Coverage notes…"
+                      value={formData.assignmentNotes || ""}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          assignmentNotes: e.target.value,
+                        })
+                      }
+                    />
+                    <button
+                      className="btn btn-primary"
+                      disabled={!formData.assignmentPick}
+                      onClick={() => {
+                        setKsbAssignmentMappings([
+                          ...ksbAssignmentMappings,
+                          {
+                            ksb_id: modal.ksbId,
+                            assignment_id: formData.assignmentPick,
+                            coverage_notes: formData.assignmentNotes || "",
+                          },
+                        ]);
+                        setFormData({
+                          ...formData,
+                          assignmentPick: "",
+                          assignmentNotes: "",
+                        });
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: "var(--ink-light)" }}>
+                    All scoped assignments are already mapped.
+                  </div>
+                )}
+              </div>
+
+              {/* ── Section 3: Short Courses ── */}
+              <div style={{ marginBottom: 28 }}>
+                <div className="section-tag" style={{ marginBottom: 8 }}>
+                  Mapped Short Courses
+                </div>
+                {myScMaps.length === 0 ? (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--ink-light)",
+                      marginBottom: 8,
+                    }}
+                  >
+                    No short courses mapped yet.
+                  </div>
+                ) : (
+                  <div className="data-list" style={{ marginBottom: 8 }}>
+                    {myScMaps.map((m) => {
+                      const s = shortCourses.find(
+                        (x) => x.id === m.short_course_id,
+                      );
+                      return (
+                        <div
+                          key={m.short_course_id}
+                          className="data-item"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <span
+                            className="data-item-main"
+                            style={{ flex: 1, fontSize: 13 }}
+                          >
+                            {s ? s.name : m.short_course_id}
+                          </span>
+                          <input
+                            style={{ width: 180, fontSize: 12 }}
+                            placeholder="Coverage notes…"
+                            value={m.coverage_notes || ""}
+                            onChange={(e) =>
+                              setKsbShortCourseMappings(
+                                ksbShortCourseMappings.map((x) =>
+                                  x.ksb_id === m.ksb_id &&
+                                  x.short_course_id === m.short_course_id
+                                    ? { ...x, coverage_notes: e.target.value }
+                                    : x,
+                                ),
+                              )
+                            }
+                          />
+                          <button
+                            className="btn btn-ghost"
+                            style={{
+                              color: "var(--danger, #e53e3e)",
+                              flexShrink: 0,
+                            }}
+                            onClick={() =>
+                              setKsbShortCourseMappings(
+                                ksbShortCourseMappings.filter(
+                                  (x) =>
+                                    !(
+                                      x.ksb_id === m.ksb_id &&
+                                      x.short_course_id === m.short_course_id
+                                    ),
+                                ),
+                              )
+                            }
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {scopedScs.length === 0 ? (
+                  <div style={{ fontSize: 12, color: "var(--ink-light)" }}>
+                    No short courses attached to this apprenticeship yet.
+                  </div>
+                ) : pickableScs.length > 0 ? (
+                  <div
+                    style={{ display: "flex", gap: 8, alignItems: "center" }}
+                  >
+                    <select
+                      style={{ flex: 1 }}
+                      value={formData.scPick || ""}
+                      onChange={(e) =>
+                        setFormData({ ...formData, scPick: e.target.value })
+                      }
+                    >
+                      <option value="">— select short course —</option>
+                      {pickableScs.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      style={{ width: 180, fontSize: 12 }}
+                      placeholder="Coverage notes…"
+                      value={formData.scNotes || ""}
+                      onChange={(e) =>
+                        setFormData({ ...formData, scNotes: e.target.value })
+                      }
+                    />
+                    <button
+                      className="btn btn-primary"
+                      disabled={!formData.scPick}
+                      onClick={() => {
+                        setKsbShortCourseMappings([
+                          ...ksbShortCourseMappings,
+                          {
+                            ksb_id: modal.ksbId,
+                            short_course_id: formData.scPick,
+                            coverage_notes: formData.scNotes || "",
+                          },
+                        ]);
+                        setFormData({ ...formData, scPick: "", scNotes: "" });
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: "var(--ink-light)" }}>
+                    All attached short courses are already mapped.
+                  </div>
+                )}
+              </div>
+
+              {/* ── Section 4: Qualifications ── */}
+              <div>
+                <div className="section-tag" style={{ marginBottom: 8 }}>
+                  Mapped Qualifications
+                </div>
+                {myQualMaps.length === 0 ? (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--ink-light)",
+                      marginBottom: 8,
+                    }}
+                  >
+                    No qualifications mapped yet.
+                  </div>
+                ) : (
+                  <div className="data-list" style={{ marginBottom: 8 }}>
+                    {myQualMaps.map((m) => {
+                      const q = qualifications.find(
+                        (x) => x.id === m.qualification_id,
+                      );
+                      return (
+                        <div
+                          key={m.qualification_id}
+                          className="data-item"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <span
+                            className="data-item-main"
+                            style={{ flex: 1, fontSize: 13 }}
+                          >
+                            {q ? q.name : m.qualification_id}
+                          </span>
+                          <input
+                            style={{ width: 180, fontSize: 12 }}
+                            placeholder="Coverage notes…"
+                            value={m.coverage_notes || ""}
+                            onChange={(e) =>
+                              setKsbQualificationMappings(
+                                ksbQualificationMappings.map((x) =>
+                                  x.ksb_id === m.ksb_id &&
+                                  x.qualification_id === m.qualification_id
+                                    ? { ...x, coverage_notes: e.target.value }
+                                    : x,
+                                ),
+                              )
+                            }
+                          />
+                          <button
+                            className="btn btn-ghost"
+                            style={{
+                              color: "var(--danger, #e53e3e)",
+                              flexShrink: 0,
+                            }}
+                            onClick={() =>
+                              setKsbQualificationMappings(
+                                ksbQualificationMappings.filter(
+                                  (x) =>
+                                    !(
+                                      x.ksb_id === m.ksb_id &&
+                                      x.qualification_id === m.qualification_id
+                                    ),
+                                ),
+                              )
+                            }
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {scopedQuals.length === 0 ? (
+                  <div style={{ fontSize: 12, color: "var(--ink-light)" }}>
+                    No qualifications attached to this apprenticeship yet.
+                  </div>
+                ) : pickableQuals.length > 0 ? (
+                  <div
+                    style={{ display: "flex", gap: 8, alignItems: "center" }}
+                  >
+                    <select
+                      style={{ flex: 1 }}
+                      value={formData.qualPick || ""}
+                      onChange={(e) =>
+                        setFormData({ ...formData, qualPick: e.target.value })
+                      }
+                    >
+                      <option value="">— select qualification —</option>
+                      {pickableQuals.map((q) => (
+                        <option key={q.id} value={q.id}>
+                          {q.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      style={{ width: 180, fontSize: 12 }}
+                      placeholder="Coverage notes…"
+                      value={formData.qualNotes || ""}
+                      onChange={(e) =>
+                        setFormData({ ...formData, qualNotes: e.target.value })
+                      }
+                    />
+                    <button
+                      className="btn btn-primary"
+                      disabled={!formData.qualPick}
+                      onClick={() => {
+                        setKsbQualificationMappings([
+                          ...ksbQualificationMappings,
+                          {
+                            ksb_id: modal.ksbId,
+                            qualification_id: formData.qualPick,
+                            coverage_notes: formData.qualNotes || "",
+                          },
+                        ]);
+                        setFormData({
+                          ...formData,
+                          qualPick: "",
+                          qualNotes: "",
+                        });
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: "var(--ink-light)" }}>
+                    All attached qualifications are already mapped.
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-primary" onClick={closeModal}>
                 Done
               </button>
             </div>
@@ -3469,11 +5101,25 @@ export default function LMSAdminUI() {
 
     // === CREATE LEARNER ===
     if (modal.type === "create-learner") {
+      const createPlan = formData.create_plan !== false; // default true
+      const planStatus = formData.plan_status || "active";
       const handleSave = () => {
+        const learnerId = newId("learner");
         setLearners([
           ...learners,
-          { id: newId("learner"), ...formData, learner_status: "planned" },
+          { id: learnerId, ...formData, learner_status: "planned" },
         ]);
+        if (createPlan) {
+          setLearningPlans([
+            ...learningPlans,
+            {
+              id: newId("plan"),
+              learner_id: learnerId,
+              created_date: new Date().toISOString().slice(0, 10),
+              status: planStatus,
+            },
+          ]);
+        }
         closeModal();
       };
       return (
@@ -3490,6 +5136,7 @@ export default function LMSAdminUI() {
                 <div className="field form-grid-full">
                   <label>Full name</label>
                   <input
+                    autoFocus
                     value={formData.full_name || ""}
                     onChange={(e) =>
                       setFormData({ ...formData, full_name: e.target.value })
@@ -3563,6 +5210,52 @@ export default function LMSAdminUI() {
                     }
                   />
                 </div>
+                <div
+                  className="field form-grid-full"
+                  style={{
+                    borderTop: "1px solid var(--line)",
+                    paddingTop: 14,
+                    marginTop: 4,
+                  }}
+                >
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={createPlan}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          create_plan: e.target.checked,
+                        })
+                      }
+                    />
+                    Also create a learning plan
+                  </label>
+                </div>
+                {createPlan && (
+                  <div className="field">
+                    <label>Plan status</label>
+                    <select
+                      value={planStatus}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          plan_status: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="active">Active</option>
+                      <option value="draft">Draft</option>
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
             <div className="modal-footer">
@@ -3608,6 +5301,7 @@ export default function LMSAdminUI() {
             template_version: "v1",
             status: "planned",
             start_date: formData.start_date,
+            planned_end_date: formData.planned_end_date,
           };
           setApprenticeshipEnrollments((prev) => [...prev, enrollmentRecord]);
 
@@ -3615,37 +5309,45 @@ export default function LMSAdminUI() {
           const newQualEnrs = [],
             newUnitEnrs = [],
             newCourseEnrs = [];
-          (tmpl.qualification_ids || []).forEach((qid) => {
-            const qe = {
-              id: newId("enr_qual"),
-              learner_id: learnerId,
-              qualification_id: qid,
-              parent_enrollment_id: enrollmentId,
-              template_version: "v1",
-              status: "planned",
-            };
-            newQualEnrs.push(qe);
-            // cascade units
-            const qUnits = units.filter((u) => u.qualification_id === qid);
-            qUnits.forEach((u) =>
-              newUnitEnrs.push({
-                id: newId("enr_unit"),
+          apprenticeshipQualifications
+            .filter((aq) => aq.apprenticeship_id === tmpl.id)
+            .forEach((aq) => {
+              const qid = aq.qualification_id;
+              const qe = {
+                id: newId("enr_qual"),
                 learner_id: learnerId,
-                unit_id: u.id,
-                parent_enrollment_id: qe.id,
+                qualification_id: qid,
+                parent_enrollment_id: enrollmentId,
+                template_version: "v1",
                 status: "planned",
-              }),
-            );
-          });
-          (tmpl.short_course_ids || []).forEach((sid) => {
-            newCourseEnrs.push({
-              id: newId("enr_sc"),
-              learner_id: learnerId,
-              short_course_id: sid,
-              parent_enrollment_id: enrollmentId,
-              status: "planned",
+              };
+              newQualEnrs.push(qe);
+              // cascade units
+              const qUnits = qualificationUnits
+                .filter((qu) => qu.qualification_id === qid)
+                .map((qu) => units.find((u) => u.id === qu.unit_id))
+                .filter(Boolean);
+              qUnits.forEach((u) =>
+                newUnitEnrs.push({
+                  id: newId("enr_unit"),
+                  learner_id: learnerId,
+                  unit_id: u.id,
+                  parent_enrollment_id: qe.id,
+                  status: "planned",
+                }),
+              );
             });
-          });
+          apprenticeshipShortCourses
+            .filter((ac) => ac.apprenticeship_id === tmpl.id)
+            .forEach((ac) => {
+              newCourseEnrs.push({
+                id: newId("enr_sc"),
+                learner_id: learnerId,
+                short_course_id: ac.short_course_id,
+                parent_enrollment_id: enrollmentId,
+                status: "planned",
+              });
+            });
           if (newQualEnrs.length)
             setQualEnrollments((prev) => [...prev, ...newQualEnrs]);
           if (newUnitEnrs.length)
@@ -3666,7 +5368,10 @@ export default function LMSAdminUI() {
           };
           setQualEnrollments((prev) => [...prev, enrollmentRecord]);
           // cascade units
-          const qUnits = units.filter((u) => u.qualification_id === tmpl.id);
+          const qUnits = qualificationUnits
+            .filter((qu) => qu.qualification_id === tmpl.id)
+            .map((qu) => units.find((u) => u.id === qu.unit_id))
+            .filter(Boolean);
           if (qUnits.length) {
             const newUnits = qUnits.map((u) => ({
               id: newId("enr_unit"),
@@ -3684,7 +5389,9 @@ export default function LMSAdminUI() {
             learner_id: learnerId,
             unit_id: tmpl.id,
             parent_enrollment_id: null,
+            template_version: "v1",
             status: "planned",
+            start_date: formData.start_date,
           };
           setUnitEnrollments((prev) => [...prev, enrollmentRecord]);
         } else if (itemType === "short_course") {
@@ -3694,17 +5401,23 @@ export default function LMSAdminUI() {
             learner_id: learnerId,
             short_course_id: tmpl.id,
             parent_enrollment_id: null,
+            template_version: "v1",
             status: "planned",
+            start_date: formData.start_date,
           };
           setShortCourseEnrollments((prev) => [...prev, enrollmentRecord]);
         }
 
+        const activePlan =
+          learningPlans.find(
+            (p) => p.learner_id === learnerId && p.status === "active",
+          ) || learningPlans.find((p) => p.learner_id === learnerId);
         setPlanItems((prev) => [
           ...prev,
           {
             id: planItemId,
             learner_id: learnerId,
-            plan_id: "plan_" + learnerId,
+            plan_id: activePlan ? activePlan.id : "plan_" + learnerId,
             enrollment_type: itemType,
             enrollment_id: enrollmentId,
           },
@@ -3838,6 +5551,21 @@ export default function LMSAdminUI() {
                         }
                       />
                     </div>
+                    {itemType === "apprenticeship" && (
+                      <div className="field">
+                        <label>Planned end date</label>
+                        <input
+                          type="date"
+                          value={formData.planned_end_date || ""}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              planned_end_date: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                    )}
                     {itemType === "qualification" && (
                       <>
                         <div className="field">
@@ -4002,6 +5730,19 @@ export default function LMSAdminUI() {
                         }
                       />
                     </div>
+                    <div className="field">
+                      <label>Certificate received date</label>
+                      <input
+                        type="date"
+                        defaultValue={enrollment.certificate_received_date}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            certificate_received_date: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
                   </>
                 )}
                 {et === "qualification" && (
@@ -4132,17 +5873,18 @@ export default function LMSAdminUI() {
       const { enrollment, enrollmentType: et, learnerId } = modal;
       const apprId =
         et === "apprenticeship" ? enrollment.apprenticeship_id : null;
-      const availableKsbs = apprId
-        ? ksbs.filter((k) => k.apprenticeship_id === apprId)
-        : [];
-      // For nested unit/qual, find the parent apprenticeship to get KSBs
+      // Walk up parent_enrollment_id chain to find the root apprenticeship enrollment
       let rootApprId = apprId;
+      let rootApprEnrId = et === "apprenticeship" ? enrollment.id : null;
       if (!rootApprId) {
         if (et === "qualification" && enrollment.parent_enrollment_id) {
           const parentApp = apprenticeshipEnrollments.find(
             (a) => a.id === enrollment.parent_enrollment_id,
           );
-          rootApprId = parentApp?.apprenticeship_id;
+          if (parentApp) {
+            rootApprId = parentApp.apprenticeship_id;
+            rootApprEnrId = parentApp.id;
+          }
         } else if (et === "unit" && enrollment.parent_enrollment_id) {
           const parentQual = qualEnrollments.find(
             (q) => q.id === enrollment.parent_enrollment_id,
@@ -4151,13 +5893,30 @@ export default function LMSAdminUI() {
             const parentApp = apprenticeshipEnrollments.find(
               (a) => a.id === parentQual.parent_enrollment_id,
             );
-            rootApprId = parentApp?.apprenticeship_id;
+            if (parentApp) {
+              rootApprId = parentApp.apprenticeship_id;
+              rootApprEnrId = parentApp.id;
+            }
           }
         }
       }
       const linkableKsbs = rootApprId
         ? ksbs.filter((k) => k.apprenticeship_id === rootApprId)
         : [];
+
+      // Assignment templates scoped to this enrollment's template
+      const templateId =
+        et === "apprenticeship"
+          ? enrollment.apprenticeship_id
+          : et === "qualification"
+            ? enrollment.qualification_id
+            : et === "unit"
+              ? enrollment.unit_id
+              : enrollment.short_course_id;
+      const templateSuggestions = assignments.filter(
+        (a) =>
+          a.parent_template_type === et && a.parent_template_id === templateId,
+      );
 
       const toggleKsb = (id) => {
         const links = formData.ksb_links || [];
@@ -4170,10 +5929,11 @@ export default function LMSAdminUI() {
       };
 
       const handleSave = () => {
+        const assignmentId = newId("asn");
         setLearnerAssignments([
           ...learnerAssignments,
           {
-            id: newId("asn"),
+            id: assignmentId,
             learner_id: learnerId,
             parent_enrollment_id: enrollment.id,
             parent_enrollment_type: et,
@@ -4185,6 +5945,35 @@ export default function LMSAdminUI() {
             ksb_links: formData.ksb_links || [],
           },
         ]);
+        // Create / resolve learnerKsb rows and learnerAssignmentKsbs links
+        const selectedKsbIds = formData.ksb_links || [];
+        if (selectedKsbIds.length > 0 && rootApprEnrId) {
+          const updatedLearnerKsbs = [...learnerKsbs];
+          const newLinks = [];
+          selectedKsbIds.forEach((ksbTemplateId) => {
+            let lk = updatedLearnerKsbs.find(
+              (r) =>
+                r.apprenticeship_enrollment_id === rootApprEnrId &&
+                r.ksb_id === ksbTemplateId,
+            );
+            if (!lk) {
+              lk = {
+                id: newId("lk"),
+                apprenticeship_enrollment_id: rootApprEnrId,
+                ksb_id: ksbTemplateId,
+                status: "not started",
+              };
+              updatedLearnerKsbs.push(lk);
+            }
+            newLinks.push({
+              id: newId("lak"),
+              learner_assignment_id: assignmentId,
+              learner_ksb_id: lk.id,
+            });
+          });
+          setLearnerKsbs(updatedLearnerKsbs);
+          setLearnerAssignmentKsbs([...learnerAssignmentKsbs, ...newLinks]);
+        }
         closeModal();
       };
 
@@ -4214,11 +6003,41 @@ export default function LMSAdminUI() {
               <div className="form-grid">
                 <div className="field form-grid-full">
                   <label>Title</label>
+                  {templateSuggestions.length > 0 && (
+                    <select
+                      style={{ marginBottom: 6 }}
+                      value={formData._templatePick || ""}
+                      onChange={(e) => {
+                        const tmpl = templateSuggestions.find(
+                          (t) => t.id === e.target.value,
+                        );
+                        setFormData({
+                          ...formData,
+                          _templatePick: e.target.value,
+                          title: tmpl ? tmpl.title : formData.title,
+                        });
+                      }}
+                    >
+                      <option value="">
+                        — pick from template or type freely —
+                      </option>
+                      {templateSuggestions.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.title}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <input
                     value={formData.title || ""}
                     onChange={(e) =>
-                      setFormData({ ...formData, title: e.target.value })
+                      setFormData({
+                        ...formData,
+                        title: e.target.value,
+                        _templatePick: "",
+                      })
                     }
+                    placeholder="Assignment title…"
                   />
                 </div>
                 <div className="field">

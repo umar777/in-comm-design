@@ -32,12 +32,39 @@ export function useLmsState() {
     loadSaved("shortCourses", []),
   );
   const [ksbs, setKsbs] = useState(() => loadSaved("ksbs", []));
-  const [assignmentTemplates, setAssignmentTemplates] = useState(() =>
-    loadSaved("assignmentTemplates", []),
+  const [assignments, setAssignments] = useState(() =>
+    loadSaved("assignments", []),
+  );
+
+  // TEMPLATE COMPOSITION JUNCTIONS
+  const [apprenticeshipQualifications, setApprenticeshipQualifications] =
+    useState(() => loadSaved("apprenticeshipQualifications", []));
+  const [apprenticeshipShortCourses, setApprenticeshipShortCourses] = useState(
+    () => loadSaved("apprenticeshipShortCourses", []),
+  );
+  const [qualificationUnits, setQualificationUnits] = useState(() =>
+    loadSaved("qualificationUnits", []),
+  );
+
+  // TEMPLATE-LEVEL KSB MAPPINGS
+  const [ksbUnitMappings, setKsbUnitMappings] = useState(() =>
+    loadSaved("ksbUnitMappings", []),
+  );
+  const [ksbAssignmentMappings, setKsbAssignmentMappings] = useState(() =>
+    loadSaved("ksbAssignmentMappings", []),
+  );
+  const [ksbShortCourseMappings, setKsbShortCourseMappings] = useState(() =>
+    loadSaved("ksbShortCourseMappings", []),
+  );
+  const [ksbQualificationMappings, setKsbQualificationMappings] = useState(() =>
+    loadSaved("ksbQualificationMappings", []),
   );
 
   // LEARNERS
   const [learners, setLearners] = useState(() => loadSaved("learners", []));
+  const [learningPlans, setLearningPlans] = useState(() =>
+    loadSaved("learningPlans", []),
+  );
 
   // ENROLLMENTS (per-learner instances)
   const [apprenticeshipEnrollments, setApprenticeshipEnrollments] = useState(
@@ -63,7 +90,13 @@ export function useLmsState() {
   const [learnerAssignments, setLearnerAssignments] = useState(() =>
     loadSaved("learnerAssignments", []),
   );
+  const [learnerAssignmentKsbs, setLearnerAssignmentKsbs] = useState(() =>
+    loadSaved("learnerAssignmentKsbs", []),
+  );
   const [otjHours, setOtjHours] = useState(() => loadSaved("otjHours", []));
+  const [otjKsbLinks, setOtjKsbLinks] = useState(() =>
+    loadSaved("otjKsbLinks", []),
+  );
   const [gateways, setGateways] = useState(() => loadSaved("gateways", []));
 
   // ─── Persist all data to localStorage on every change ──────────────────────
@@ -77,16 +110,26 @@ export function useLmsState() {
           units,
           shortCourses,
           ksbs,
-          assignmentTemplates,
+          assignments,
+          apprenticeshipQualifications,
+          apprenticeshipShortCourses,
+          qualificationUnits,
+          ksbUnitMappings,
+          ksbAssignmentMappings,
+          ksbShortCourseMappings,
+          ksbQualificationMappings,
           learners,
+          learningPlans,
+          planItems,
           apprenticeshipEnrollments,
           qualEnrollments,
           unitEnrollments,
           shortCourseEnrollments,
-          planItems,
           learnerKsbs,
           learnerAssignments,
+          learnerAssignmentKsbs,
           otjHours,
+          otjKsbLinks,
           gateways,
         }),
       );
@@ -99,16 +142,26 @@ export function useLmsState() {
     units,
     shortCourses,
     ksbs,
-    assignmentTemplates,
+    assignments,
+    apprenticeshipQualifications,
+    apprenticeshipShortCourses,
+    qualificationUnits,
+    ksbUnitMappings,
+    ksbAssignmentMappings,
+    ksbShortCourseMappings,
+    ksbQualificationMappings,
     learners,
+    learningPlans,
+    planItems,
     apprenticeshipEnrollments,
     qualEnrollments,
     unitEnrollments,
     shortCourseEnrollments,
-    planItems,
     learnerKsbs,
     learnerAssignments,
+    learnerAssignmentKsbs,
     otjHours,
+    otjKsbLinks,
     gateways,
   ]);
 
@@ -180,12 +233,36 @@ export function useLmsState() {
     setShortCourses,
     ksbs,
     setKsbs,
-    assignmentTemplates,
-    setAssignmentTemplates,
+    assignments,
+    setAssignments,
+
+    // Template composition junctions
+    apprenticeshipQualifications,
+    setApprenticeshipQualifications,
+    apprenticeshipShortCourses,
+    setApprenticeshipShortCourses,
+    qualificationUnits,
+    setQualificationUnits,
+
+    // Template-level KSB mappings
+    ksbUnitMappings,
+    setKsbUnitMappings,
+    ksbAssignmentMappings,
+    setKsbAssignmentMappings,
+    ksbShortCourseMappings,
+    setKsbShortCourseMappings,
+    ksbQualificationMappings,
+    setKsbQualificationMappings,
 
     // Learners
     learners,
     setLearners,
+    learningPlans,
+    setLearningPlans,
+
+    // Plan items
+    planItems,
+    setPlanItems,
 
     // Enrollments
     apprenticeshipEnrollments,
@@ -197,17 +274,17 @@ export function useLmsState() {
     shortCourseEnrollments,
     setShortCourseEnrollments,
 
-    // Plan items
-    planItems,
-    setPlanItems,
-
     // Progress tracking
     learnerKsbs,
     setLearnerKsbs,
     learnerAssignments,
     setLearnerAssignments,
+    learnerAssignmentKsbs,
+    setLearnerAssignmentKsbs,
     otjHours,
     setOtjHours,
+    otjKsbLinks,
+    setOtjKsbLinks,
     gateways,
     setGateways,
 
