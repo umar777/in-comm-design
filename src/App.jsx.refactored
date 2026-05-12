@@ -1,0 +1,140 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Plus, X, CheckCircle2, Circle, Home, Award, GraduationCap, Layers, BookOpen,
+  FileText, Clock, Target, AlertCircle, Briefcase, Calendar, Hash
+} from 'lucide-react';
+import { useLmsState } from './hooks/useLmsState';
+import Sidebar from './components/Sidebar';
+import LibraryPage from './components/pages/LibraryPage';
+import LearnersPage from './components/pages/LearnersPage';
+import './App.css';
+
+export default function LMSAdminUI() {
+  const state = useLmsState();
+  
+  // Modal form state
+  const [formData, setFormData] = useState({});
+  
+  useEffect(() => {
+    if (state.modal) setFormData({});
+  }, [state.modal?.type, state.modal?.templateType, state.modal?.enrollment?.id]);
+  
+  const closeModal = () => {
+    state.setModal(null);
+    setFormData({});
+  };
+
+  // ============================================
+  // MODAL COMPONENT - Contains all modal types
+  // TODO: Split into separate files:
+  // - modals/CreateTemplate.jsx
+  // - modals/ViewTemplate.jsx
+  // - modals/CreateLearner.jsx
+  // - modals/AddPlanItem.jsx
+  // - modals/EditEnrollment.jsx
+  // - modals/CreateAssignment.jsx
+  // - modals/InitKsbs.jsx
+  // - modals/LogOtj.jsx
+  // - modals/EditGateway.jsx
+  // ============================================
+  
+  const renderModal = () => {
+    if (!state.modal) return null;
+    
+    const { modal, setModal } = state;
+
+    // === CREATE TEMPLATE ===
+    if (modal.type === 'create-template') {
+      const t = modal.templateType;
+      const labels = { apprenticeship: 'Apprenticeship', qualification: 'Qualification', unit: 'Unit', short_course: 'Short Course' };
+      
+      const handleSave = () => {
+        const id = state.newId(t);
+        const item = { id, name: formData.name, ...formData };
+        if (t === 'apprenticeship') state.setApprenticeships([...state.apprenticeships, item]);
+        if (t === 'qualification') state.setQualifications([...state.qualifications, item]);
+        if (t === 'unit') state.setUnits([...state.units, item]);
+        if (t === 'short_course') state.setShortCourses([...state.shortCourses, item]);
+        closeModal();
+      };
+      
+      return (
+        <div className="modal-backdrop" onClick={closeModal}>
+          <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <div className="section-tag">New template</div>
+                <div className="modal-title">{labels[t]}</div>
+                <div className="modal-sub">Define structural fields. Per-learner data is captured at enrollment.</div>
+              </div>
+              <button className="btn btn-ghost" onClick={closeModal}><X size={18}/></button>
+            </div>
+            <div className="modal-body">
+              <div className="form-grid">
+                <div className="field form-grid-full">
+                  <label>Name</label>
+                  <input value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} placeholder={`e.g. ${t==='apprenticeship'?'Digital Marketer L3':'Example'}`}/>
+                </div>
+                
+                {t === 'apprenticeship' && (
+                  <>
+                    <div className="field"><label>Standard code</label><input value={formData.standard_code||''} onChange={e=>setFormData({...formData, standard_code: e.target.value})} placeholder="ST0122"/></div>
+                    <div className="field"><label>Programme level</label><input type="number" value={formData.programme_level||''} onChange={e=>setFormData({...formData, programme_level: e.target.value})} placeholder="3"/></div>
+                    <div className="field"><label>Programme length</label><input value={formData.programme_length||''} onChange={e=>setFormData({...formData, programme_length: e.target.value})} placeholder="18 months"/></div>
+                    <div className="field"><label>Min OTJ hours</label><input type="number" value={formData.min_otj_hours||''} onChange={e=>setFormData({...formData, min_otj_hours: e.target.value})} placeholder="278"/></div>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={closeModal}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleSave} disabled={!formData.name}>Create template</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // === CREATE LEARNER ===
+    if (modal.type === 'create-learner') {
+      const handleSave = () => {
+        state.setLearners([...state.learners, { id: state.newId('learner'), ...formData, learner_status: 'planned' }]);
+        closeModal();
+      };
+      
+      return (
+        <div className="modal-backdrop" onClick={closeModal}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">Add learner</div>
+              <button className="btn btn-ghost" onClick={closeModal}><X size={18}/></button>
+            </div>
+            <div className="modal-body">
+              <div className="form-grid">
+                <div className="field form-grid-full"><label>Full name</label><input value={formData.full_name||''} onChange={e=>setFormData({...formData, full_name: e.target.value})}/></div>
+                <div className="field"><label>ULN</label><input value={formData.uln||''} onChange={e=>setFormData({...formData, uln: e.target.value})}/></div>
+                <div className="field"><label>Employer</label><input value={formData.employer||''} onChange={e=>setFormData({...formData, employer: e.target.value})}/></div>
+                <div className="field"><label>Tutor / case owner</label><input value={formData.tutor_or_case_owner||''} onChange={e=>setFormData({...formData, tutor_or_case_owner: e.target.value})}/></div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={closeModal}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleSave} disabled={!formData.full_name}>Add learner</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  return (
+    <div className="lms-root">
+      <Sidebar state={state} />
+      {state.view.page === 'library' && <LibraryPage state={state} />}
+      {state.view.page === 'learners' && <LearnersPage state={state} />}
+      {renderModal()}
+    </div>
+  );
+}

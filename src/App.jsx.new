@@ -1,0 +1,24 @@
+import React from 'react';
+import { useLmsState } from './hooks/useLmsState';
+import Sidebar from './components/Sidebar';
+import LibraryPage from './components/pages/LibraryPage';
+import LearnersPage from './components/pages/LearnersPage';
+import LearnerProfile from './components/pages/LearnerProfile';
+import EnrollmentDetail from './components/pages/EnrollmentDetail';
+import Modal from './components/modals/Modal';
+import './App.css';
+
+export default function LMSAdminUI() {
+  const state = useLmsState();
+
+  return (
+    <div className="lms-root">
+      <Sidebar state={state} />
+      {state.view.page === 'library' && <LibraryPage state={state} />}
+      {state.view.page === 'learners' && <LearnersPage state={state} />}
+      {state.view.page === 'learner-profile' && <LearnerProfile state={state} />}
+      {state.view.page === 'enrollment-detail' && <EnrollmentDetail state={state} />}
+      <Modal state={state} />
+    </div>
+  );
+}
