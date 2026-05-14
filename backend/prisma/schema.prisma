@@ -1,0 +1,451 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEMPLATES (the library)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Apprenticeship {
+  id                String  @id
+  name              String
+  status            String?
+  template_version  String?
+  standard_code     String?
+  pathway           String?
+  programme_level   String?
+  delivery_mode     String?
+  programme_length  String?
+  epa_length        String?
+  funding_body      String?
+  awarding_body     String?
+  min_otj_hours     String?
+  epa_grade_options String?
+  sector            String?
+
+  ksbs                          Ksb[]
+  apprenticeship_qualifications ApprenticeshipQualification[]
+  apprenticeship_short_courses  ApprenticeshipShortCourse[]
+  enrollments                   ApprenticeshipEnrollment[]
+}
+
+model Qualification {
+  id                     String  @id
+  name                   String
+  status                 String?
+  template_version       String?
+  qualification_level    String?
+  awarding_body          String?
+  qualification_duration String?
+  sector                 String?
+  has_units              Boolean @default(false)
+  has_assignments        Boolean @default(false)
+  is_parent_qual         Boolean @default(false)
+
+  apprenticeship_qualifications ApprenticeshipQualification[]
+  qualification_units           QualificationUnit[]
+  ksb_qualification_mappings    KsbQualificationMapping[]
+  enrollments                   QualEnrollment[]
+}
+
+model Unit {
+  id                    String  @id
+  name                  String
+  status                String?
+  unit_code             String?
+  sequence_number       String?
+  mandatory_or_elective String?
+
+  qualification_units QualificationUnit[]
+  ksb_unit_mappings   KsbUnitMapping[]
+  enrollments         UnitEnrollment[]
+}
+
+model ShortCourse {
+  id                   String  @id
+  name                 String
+  status               String?
+  course_code          String?
+  duration             String?
+  sector               String?
+  has_assessment       Boolean @default(false)
+  produces_certificate Boolean @default(false)
+
+  apprenticeship_short_courses ApprenticeshipShortCourse[]
+  ksb_short_course_mappings    KsbShortCourseMapping[]
+  enrollments                  ShortCourseEnrollment[]
+}
+
+// Assignments attach to one of: apprenticeship | qualification | unit | short_course.
+// Polymorphic — parent_template_id has no FK constraint.
+model Assignment {
+  id                   String  @id
+  parent_template_type String
+  parent_template_id   String
+  title                String
+  description          String?
+
+  ksb_assignment_mappings KsbAssignmentMapping[]
+
+  @@index([parent_template_type, parent_template_id])
+}
+
+// KSBs are scoped to an apprenticeship template.
+model Ksb {
+  id                String  @id
+  apprenticeship_id String
+  code              String
+  type              String  @default("K") // K | S | B
+  description       String?
+  mandatory         Boolean @default(true)
+
+  apprenticeship Apprenticeship @relation(fields: [apprenticeship_id], references: [id], onDelete: Cascade)
+
+  unit_mappings          KsbUnitMapping[]
+  assignment_mappings    KsbAssignmentMapping[]
+  short_course_mappings  KsbShortCourseMapping[]
+  qualification_mappings KsbQualificationMapping[]
+  learner_ksbs           LearnerKsb[]
+
+  @@index([apprenticeship_id])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEMPLATE COMPOSITION JUNCTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ApprenticeshipQualification {
+  apprenticeship_id String
+  qualification_id  String
+  mandatory         Boolean @default(true)
+  sequence          Int?
+
+  apprenticeship Apprenticeship @relation(fields: [apprenticeship_id], references: [id], onDelete: Cascade)
+  qualification  Qualification  @relation(fields: [qualification_id], references: [id], onDelete: Cascade)
+
+  @@id([apprenticeship_id, qualification_id])
+}
+
+model ApprenticeshipShortCourse {
+  apprenticeship_id String
+  short_course_id   String
+  mandatory         Boolean @default(true)
+  sequence          Int?
+
+  apprenticeship Apprenticeship @relation(fields: [apprenticeship_id], references: [id], onDelete: Cascade)
+  short_course   ShortCourse    @relation(fields: [short_course_id], references: [id], onDelete: Cascade)
+
+  @@id([apprenticeship_id, short_course_id])
+}
+
+model QualificationUnit {
+  qualification_id String
+  unit_id          String
+  mandatory        Boolean @default(true)
+  sequence         Int?
+
+  qualification Qualification @relation(fields: [qualification_id], references: [id], onDelete: Cascade)
+  unit          Unit          @relation(fields: [unit_id], references: [id], onDelete: Cascade)
+
+  @@id([qualification_id, unit_id])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEMPLATE-LEVEL KSB MAPPINGS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model KsbUnitMapping {
+  ksb_id         String
+  unit_id        String
+  coverage_notes String?
+
+  ksb  Ksb  @relation(fields: [ksb_id], references: [id], onDelete: Cascade)
+  unit Unit @relation(fields: [unit_id], references: [id], onDelete: Cascade)
+
+  @@id([ksb_id, unit_id])
+}
+
+model KsbAssignmentMapping {
+  ksb_id         String
+  assignment_id  String
+  coverage_notes String?
+
+  ksb        Ksb        @relation(fields: [ksb_id], references: [id], onDelete: Cascade)
+  assignment Assignment @relation(fields: [assignment_id], references: [id], onDelete: Cascade)
+
+  @@id([ksb_id, assignment_id])
+}
+
+model KsbShortCourseMapping {
+  ksb_id          String
+  short_course_id String
+  coverage_notes  String?
+
+  ksb          Ksb         @relation(fields: [ksb_id], references: [id], onDelete: Cascade)
+  short_course ShortCourse @relation(fields: [short_course_id], references: [id], onDelete: Cascade)
+
+  @@id([ksb_id, short_course_id])
+}
+
+model KsbQualificationMapping {
+  ksb_id           String
+  qualification_id String
+  coverage_notes   String?
+
+  ksb           Ksb           @relation(fields: [ksb_id], references: [id], onDelete: Cascade)
+  qualification Qualification @relation(fields: [qualification_id], references: [id], onDelete: Cascade)
+
+  @@id([ksb_id, qualification_id])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEARNERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Learner {
+  id                  String  @id
+  full_name           String
+  uln                 String?
+  date_of_birth       String?
+  employer            String?
+  workplace_manager   String?
+  tutor_or_case_owner String?
+  sen_requirements    String?
+  learner_status      String  @default("planned")
+
+  plans                      LearningPlan[]
+  plan_items                 PlanItem[]
+  apprenticeship_enrollments ApprenticeshipEnrollment[]
+  qual_enrollments           QualEnrollment[]
+  unit_enrollments           UnitEnrollment[]
+  short_course_enrollments   ShortCourseEnrollment[]
+  learner_assignments        LearnerAssignment[]
+}
+
+model LearningPlan {
+  id           String  @id
+  learner_id   String
+  created_date String?
+  status       String  @default("active")
+
+  learner    Learner    @relation(fields: [learner_id], references: [id], onDelete: Cascade)
+  plan_items PlanItem[]
+
+  @@index([learner_id])
+}
+
+// enrollment_id is polymorphic — points at one of the four enrollment tables
+// based on enrollment_type. No FK constraint.
+model PlanItem {
+  id              String @id
+  learner_id      String
+  plan_id         String
+  enrollment_type String // apprenticeship | qualification | unit | short_course
+  enrollment_id   String
+
+  learner Learner      @relation(fields: [learner_id], references: [id], onDelete: Cascade)
+  plan    LearningPlan @relation(fields: [plan_id], references: [id], onDelete: Cascade)
+
+  @@index([learner_id])
+  @@index([plan_id])
+  @@index([enrollment_type, enrollment_id])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENROLLMENTS (per-learner instances)
+// parent_enrollment_id on the child enrollments is polymorphic — left as String
+// without an FK so an apprenticeship enrollment can parent quals, and a qual
+// enrollment can parent units.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ApprenticeshipEnrollment {
+  id                        String  @id
+  learner_id                String
+  apprenticeship_id         String
+  template_version          String?
+  status                    String  @default("planned")
+  start_date                String?
+  planned_end_date          String?
+  estimated_gateway_date    String?
+  practical_gateway_date    String?
+  epa_date                  String?
+  certificate_received_date String?
+
+  learner        Learner        @relation(fields: [learner_id], references: [id], onDelete: Cascade)
+  apprenticeship Apprenticeship @relation(fields: [apprenticeship_id], references: [id], onDelete: Restrict)
+
+  learner_ksbs LearnerKsb[]
+  otj_hours    OtjHours[]
+  gateway      Gateway?
+
+  @@index([learner_id])
+  @@index([apprenticeship_id])
+}
+
+model QualEnrollment {
+  id                     String  @id
+  learner_id             String
+  qualification_id       String
+  parent_enrollment_id   String?
+  template_version       String?
+  status                 String  @default("planned")
+  registration_number    String?
+  registration_date      String?
+  end_date               String?
+  certificate_claim_date String?
+
+  learner       Learner       @relation(fields: [learner_id], references: [id], onDelete: Cascade)
+  qualification Qualification @relation(fields: [qualification_id], references: [id], onDelete: Restrict)
+
+  @@index([learner_id])
+  @@index([qualification_id])
+  @@index([parent_enrollment_id])
+}
+
+model UnitEnrollment {
+  id                   String  @id
+  learner_id           String
+  unit_id              String
+  parent_enrollment_id String?
+  template_version     String?
+  status               String  @default("planned")
+  start_date           String?
+  completion_date      String?
+  grade                String?
+
+  learner Learner @relation(fields: [learner_id], references: [id], onDelete: Cascade)
+  unit    Unit    @relation(fields: [unit_id], references: [id], onDelete: Restrict)
+
+  @@index([learner_id])
+  @@index([unit_id])
+  @@index([parent_enrollment_id])
+}
+
+model ShortCourseEnrollment {
+  id                        String  @id
+  learner_id                String
+  short_course_id           String
+  parent_enrollment_id      String?
+  template_version          String?
+  status                    String  @default("planned")
+  start_date                String?
+  completion_date           String?
+  certificate_received_date String?
+
+  learner      Learner     @relation(fields: [learner_id], references: [id], onDelete: Cascade)
+  short_course ShortCourse @relation(fields: [short_course_id], references: [id], onDelete: Restrict)
+
+  @@index([learner_id])
+  @@index([short_course_id])
+  @@index([parent_enrollment_id])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROGRESS (per-learner)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model LearnerKsb {
+  id                           String  @id
+  apprenticeship_enrollment_id String
+  ksb_id                       String
+  status                       String  @default("not started") // not started | in progress | achieved
+  met_by                       String?
+  evidence_refs                String?
+
+  enrollment ApprenticeshipEnrollment @relation(fields: [apprenticeship_enrollment_id], references: [id], onDelete: Cascade)
+  ksb        Ksb                      @relation(fields: [ksb_id], references: [id], onDelete: Cascade)
+
+  assignment_links LearnerAssignmentKsb[]
+  otj_links        OtjKsbLink[]
+
+  @@unique([apprenticeship_enrollment_id, ksb_id])
+  @@index([apprenticeship_enrollment_id])
+  @@index([ksb_id])
+}
+
+// parent_enrollment_id is polymorphic — points at one of the enrollment tables
+// based on parent_enrollment_type.
+model LearnerAssignment {
+  id                     String   @id
+  learner_id             String
+  parent_enrollment_id   String
+  parent_enrollment_type String
+  title                  String
+  deadline               String?
+  submission_date        String?
+  mark_or_grade          String?
+  assessor_feedback      String?
+  ksb_links              String[] @default([]) // KSB template IDs the learner selected
+
+  learner Learner @relation(fields: [learner_id], references: [id], onDelete: Cascade)
+
+  ksb_progress_links LearnerAssignmentKsb[]
+
+  @@index([learner_id])
+  @@index([parent_enrollment_type, parent_enrollment_id])
+}
+
+model LearnerAssignmentKsb {
+  id                    String @id
+  learner_assignment_id String
+  learner_ksb_id        String
+
+  learner_assignment LearnerAssignment @relation(fields: [learner_assignment_id], references: [id], onDelete: Cascade)
+  learner_ksb        LearnerKsb        @relation(fields: [learner_ksb_id], references: [id], onDelete: Cascade)
+
+  @@unique([learner_assignment_id, learner_ksb_id])
+  @@index([learner_assignment_id])
+  @@index([learner_ksb_id])
+}
+
+model OtjHours {
+  id                           String  @id
+  apprenticeship_enrollment_id String
+  date                         String?
+  hours_logged                 String
+  source_type                  String?
+  verified_by                  String?
+  description                  String?
+
+  enrollment ApprenticeshipEnrollment @relation(fields: [apprenticeship_enrollment_id], references: [id], onDelete: Cascade)
+
+  ksb_links OtjKsbLink[]
+
+  @@index([apprenticeship_enrollment_id])
+}
+
+model OtjKsbLink {
+  id             String @id
+  otj_hours_id   String
+  learner_ksb_id String
+
+  otj_hours   OtjHours   @relation(fields: [otj_hours_id], references: [id], onDelete: Cascade)
+  learner_ksb LearnerKsb @relation(fields: [learner_ksb_id], references: [id], onDelete: Cascade)
+
+  @@unique([otj_hours_id, learner_ksb_id])
+  @@index([otj_hours_id])
+  @@index([learner_ksb_id])
+}
+
+model Gateway {
+  id                           String  @id
+  apprenticeship_enrollment_id String  @unique
+  gateway_confirmed_date       String?
+  epa_notification_route       String?
+  all_quals_complete           Boolean @default(false)
+  functional_skills_met        Boolean @default(false)
+  min_otj_hours_met            Boolean @default(false)
+  all_ksbs_achieved            Boolean @default(false)
+  all_reviews_signed           Boolean @default(false)
+  iqa_final_complete           Boolean @default(false)
+  employer_confirmed           Boolean @default(false)
+  exam_officer_signoff         Boolean @default(false)
+  mock_epa_completed           Boolean @default(false)
+
+  enrollment ApprenticeshipEnrollment @relation(fields: [apprenticeship_enrollment_id], references: [id], onDelete: Cascade)
+}

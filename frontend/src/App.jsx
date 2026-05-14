@@ -24,6 +24,7 @@ import {
   Hash,
   AlertCircle,
   Bell,
+  Trash2,
 } from "lucide-react";
 import { useLmsState } from "./hooks/useLmsState";
 import Sidebar from "./components/Sidebar";
@@ -44,63 +45,38 @@ export default function LMSAdminUI() {
     setView,
     // TEMPLATES
     apprenticeships,
-    setApprenticeships,
     qualifications,
-    setQualifications,
     units,
-    setUnits,
     shortCourses,
-    setShortCourses,
     ksbs,
-    setKsbs,
     assignments,
-    setAssignments,
     // TEMPLATE COMPOSITION JUNCTIONS
     apprenticeshipQualifications,
-    setApprenticeshipQualifications,
     apprenticeshipShortCourses,
-    setApprenticeshipShortCourses,
     qualificationUnits,
-    setQualificationUnits,
     // TEMPLATE-LEVEL KSB MAPPINGS
     ksbUnitMappings,
-    setKsbUnitMappings,
     ksbAssignmentMappings,
-    setKsbAssignmentMappings,
     ksbShortCourseMappings,
-    setKsbShortCourseMappings,
     ksbQualificationMappings,
-    setKsbQualificationMappings,
     // LEARNERS
     learners,
-    setLearners,
     learningPlans,
-    setLearningPlans,
     // LEARNING PLAN ITEMS
     planItems,
-    setPlanItems,
     // ENROLLMENTS
     apprenticeshipEnrollments,
-    setApprenticeshipEnrollments,
     qualEnrollments,
-    setQualEnrollments,
     unitEnrollments,
-    setUnitEnrollments,
     shortCourseEnrollments,
-    setShortCourseEnrollments,
     // PROGRESS
     learnerKsbs,
-    setLearnerKsbs,
     learnerAssignments,
-    setLearnerAssignments,
     learnerAssignmentKsbs,
     setLearnerAssignmentKsbs,
     otjHours,
-    setOtjHours,
     otjKsbLinks,
-    setOtjKsbLinks,
     gateways,
-    setGateways,
     // MODAL
     modal,
     setModal,
@@ -109,6 +85,61 @@ export default function LMSAdminUI() {
     getLearner,
     getTemplate,
     getLearnerEnrollments,
+    createApprenticeship,
+    updateApprenticeship,
+    deleteApprenticeship,
+    createQualification,
+    updateQualification,
+    deleteQualification,
+    createUnit,
+    updateUnit,
+    deleteUnit,
+    createShortCourse,
+    updateShortCourse,
+    deleteShortCourse,
+    createLearner,
+    deleteLearner,
+    createLearningPlan,
+    createApprenticeshipEnrollment,
+    updateApprenticeshipEnrollment,
+    createQualEnrollment,
+    updateQualEnrollment,
+    createUnitEnrollment,
+    updateUnitEnrollment,
+    createShortCourseEnrollment,
+    updateShortCourseEnrollment,
+    createPlanItem,
+    createKsb,
+    deleteKsb,
+    createAssignment,
+    deleteAssignment,
+    createApprenticeshipQualification,
+    deleteApprenticeshipQualification,
+    createApprenticeshipShortCourse,
+    deleteApprenticeshipShortCourse,
+    createQualificationUnit,
+    updateQualificationUnit,
+    deleteQualificationUnit,
+    createKsbUnitMapping,
+    updateKsbUnitMapping,
+    deleteKsbUnitMapping,
+    createKsbAssignmentMapping,
+    updateKsbAssignmentMapping,
+    deleteKsbAssignmentMapping,
+    createKsbShortCourseMapping,
+    updateKsbShortCourseMapping,
+    deleteKsbShortCourseMapping,
+    createKsbQualificationMapping,
+    updateKsbQualificationMapping,
+    deleteKsbQualificationMapping,
+    createLearnerKsb,
+    updateLearnerKsb,
+    createLearnerAssignment,
+    deleteLearnerAssignment,
+    createLearnerAssignmentKsb,
+    createOtjHours,
+    createGateway,
+    updateGateway,
   } = useLmsState();
 
   // ============================================
@@ -1586,6 +1617,28 @@ export default function LMSAdminUI() {
           >
             {learner.learner_status || "planned"}
           </span>
+          <button
+            className="btn btn-ghost"
+            style={{ color: "var(--danger, #e53e3e)" }}
+            title="Delete learner (cascades all plans, enrollments, and progress)"
+            onClick={async () => {
+              if (
+                !window.confirm(
+                  `Delete ${learner.full_name}? This removes all of their plans, enrollments, KSB progress, OTJ hours, and gateway records.`,
+                )
+              )
+                return;
+              try {
+                await deleteLearner(learner.id);
+                setView({ page: "learners" });
+              } catch (err) {
+                console.error(err);
+                alert("Failed to delete learner.");
+              }
+            }}
+          >
+            <Trash2 size={16} />
+          </button>
         </div>
 
         <div className="section-header">
@@ -2347,13 +2400,14 @@ export default function LMSAdminUI() {
                       className="btn btn-ghost"
                       style={{ flexShrink: 0, color: "var(--danger, #e53e3e)" }}
                       onClick={() => {
-                        setLearnerAssignments(
-                          learnerAssignments.filter((a2) => a2.id !== a.id),
-                        );
-                        setLearnerAssignmentKsbs(
-                          learnerAssignmentKsbs.filter(
-                            (ak) => ak.learner_assignment_id !== a.id,
-                          ),
+                        // FK cascade on the backend cleans up learner_assignment_ksb rows;
+                        // mirror that in local state.
+                        deleteLearnerAssignment(a.id).catch((err) => {
+                          console.error(err);
+                          alert("Failed to remove assignment.");
+                        });
+                        setLearnerAssignmentKsbs((prev) =>
+                          prev.filter((ak) => ak.learner_assignment_id !== a.id),
                         );
                       }}
                     >
@@ -2479,19 +2533,18 @@ export default function LMSAdminUI() {
                       [lk.id]: { ...draft, [field]: value },
                     }));
 
-                  const saveRow = () => {
-                    setLearnerKsbs(
-                      learnerKsbs.map((r) =>
-                        r.id === lk.id
-                          ? {
-                              ...r,
-                              status: draft.status,
-                              met_by: draft.met_by,
-                              evidence_refs: draft.evidence_refs,
-                            }
-                          : r,
-                      ),
-                    );
+                  const saveRow = async () => {
+                    try {
+                      await updateLearnerKsb(lk.id, {
+                        status: draft.status,
+                        met_by: draft.met_by,
+                        evidence_refs: draft.evidence_refs,
+                      });
+                    } catch (err) {
+                      console.error(err);
+                      alert("Failed to save KSB progress.");
+                      return;
+                    }
                     setKsbEdits((prev) => {
                       const next = { ...prev };
                       delete next[lk.id];
@@ -2896,7 +2949,7 @@ export default function LMSAdminUI() {
       };
       const withVersion = { apprenticeship: true, qualification: true };
 
-      const handleSave = () => {
+      const handleSave = async () => {
         const id = newId(idPrefixMap[t]);
         const item = {
           id,
@@ -2904,11 +2957,19 @@ export default function LMSAdminUI() {
           ...formData,
           ...(withVersion[t] ? { template_version: "v1" } : {}),
         };
-        if (t === "apprenticeship")
-          setApprenticeships([...apprenticeships, item]);
-        if (t === "qualification") setQualifications([...qualifications, item]);
-        if (t === "unit") setUnits([...units, item]);
-        if (t === "short_course") setShortCourses([...shortCourses, item]);
+        const creators = {
+          apprenticeship: createApprenticeship,
+          qualification: createQualification,
+          unit: createUnit,
+          short_course: createShortCourse,
+        };
+        try {
+          await creators[t](item);
+        } catch (err) {
+          console.error(err);
+          alert("Failed to create template. Check the console.");
+          return;
+        }
         closeModal();
       };
 
@@ -3404,37 +3465,58 @@ export default function LMSAdminUI() {
                 <button
                   className={`status-pill ${item.status || "draft"}`}
                   style={{ cursor: "pointer", border: "none", fontWeight: 600 }}
-                  onClick={() => {
+                  onClick={async () => {
                     const next =
                       (item.status || "draft") === "draft" ? "active" : "draft";
-                    const updated = { ...item, status: next };
-                    if (templateType === "apprenticeship")
-                      setApprenticeships(
-                        apprenticeships.map((a) =>
-                          a.id === item.id ? updated : a,
-                        ),
-                      );
-                    if (templateType === "qualification")
-                      setQualifications(
-                        qualifications.map((q) =>
-                          q.id === item.id ? updated : q,
-                        ),
-                      );
-                    if (templateType === "unit")
-                      setUnits(
-                        units.map((u) => (u.id === item.id ? updated : u)),
-                      );
-                    if (templateType === "short_course")
-                      setShortCourses(
-                        shortCourses.map((s) =>
-                          s.id === item.id ? updated : s,
-                        ),
-                      );
-                    setModal({ ...modal, item: updated });
+                    const updaters = {
+                      apprenticeship: updateApprenticeship,
+                      qualification: updateQualification,
+                      unit: updateUnit,
+                      short_course: updateShortCourse,
+                    };
+                    try {
+                      const updated = await updaters[templateType](item.id, {
+                        status: next,
+                      });
+                      setModal({ ...modal, item: updated });
+                    } catch (err) {
+                      console.error(err);
+                      alert("Failed to update status.");
+                    }
                   }}
                   title="Click to toggle status"
                 >
                   {item.status || "draft"}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  style={{ color: "var(--danger, #e53e3e)" }}
+                  title={`Delete this ${labels[templateType].toLowerCase()}`}
+                  onClick={async () => {
+                    if (
+                      !window.confirm(
+                        `Delete "${item.name}"? This cannot be undone.`,
+                      )
+                    )
+                      return;
+                    const deleters = {
+                      apprenticeship: deleteApprenticeship,
+                      qualification: deleteQualification,
+                      unit: deleteUnit,
+                      short_course: deleteShortCourse,
+                    };
+                    try {
+                      await deleters[templateType](item.id);
+                      closeModal();
+                    } catch (err) {
+                      console.error(err);
+                      alert(
+                        "Couldn't delete — this template is referenced by existing enrollments. Remove those first.",
+                      );
+                    }
+                  }}
+                >
+                  <Trash2 size={16} />
                 </button>
                 <button className="btn btn-ghost" onClick={closeModal}>
                   <X size={18} />
@@ -3528,15 +3610,10 @@ export default function LMSAdminUI() {
                                 color: "var(--ink-light)",
                               }}
                               onClick={() =>
-                                setApprenticeshipQualifications(
-                                  apprenticeshipQualifications.filter(
-                                    (aq) =>
-                                      !(
-                                        aq.apprenticeship_id === item.id &&
-                                        aq.qualification_id === q.id
-                                      ),
-                                  ),
-                                )
+                                deleteApprenticeshipQualification({
+                                  apprenticeship_id: item.id,
+                                  qualification_id: q.id,
+                                })
                               }
                             >
                               Remove
@@ -3589,15 +3666,10 @@ export default function LMSAdminUI() {
                                 color: "var(--ink-light)",
                               }}
                               onClick={() =>
-                                setApprenticeshipShortCourses(
-                                  apprenticeshipShortCourses.filter(
-                                    (ac) =>
-                                      !(
-                                        ac.apprenticeship_id === item.id &&
-                                        ac.short_course_id === s.id
-                                      ),
-                                  ),
-                                )
+                                deleteApprenticeshipShortCourse({
+                                  apprenticeship_id: item.id,
+                                  short_course_id: s.id,
+                                })
                               }
                             >
                               Remove
@@ -3715,9 +3787,7 @@ export default function LMSAdminUI() {
                                   flexShrink: 0,
                                   color: "var(--danger, #e53e3e)",
                                 }}
-                                onClick={() =>
-                                  setKsbs(ksbs.filter((k2) => k2.id !== k.id))
-                                }
+                                onClick={() => deleteKsb(k.id)}
                               >
                                 Remove
                               </button>
@@ -3774,11 +3844,7 @@ export default function LMSAdminUI() {
                                 flexShrink: 0,
                                 color: "var(--danger, #e53e3e)",
                               }}
-                              onClick={() =>
-                                setAssignments(
-                                  assignments.filter((a2) => a2.id !== a.id),
-                                )
-                              }
+                              onClick={() => deleteAssignment(a.id)}
                             >
                               Remove
                             </button>
@@ -3863,19 +3929,15 @@ export default function LMSAdminUI() {
                                   }}
                                   onChange={(e) => {
                                     const val = parseInt(e.target.value, 10);
-                                    setQualificationUnits(
-                                      qualificationUnits.map((r) =>
-                                        r.qualification_id === item.id &&
-                                        r.unit_id === ju.unit_id
-                                          ? {
-                                              ...r,
-                                              sequence: isNaN(val)
-                                                ? r.sequence
-                                                : val,
-                                            }
-                                          : r,
-                                      ),
-                                    );
+                                    if (!isNaN(val)) {
+                                      updateQualificationUnit(
+                                        {
+                                          qualification_id: item.id,
+                                          unit_id: ju.unit_id,
+                                        },
+                                        { sequence: val },
+                                      );
+                                    }
                                   }}
                                 />
                               </label>
@@ -3894,16 +3956,12 @@ export default function LMSAdminUI() {
                                   type="checkbox"
                                   checked={!!ju.mandatory}
                                   onChange={(e) =>
-                                    setQualificationUnits(
-                                      qualificationUnits.map((r) =>
-                                        r.qualification_id === item.id &&
-                                        r.unit_id === ju.unit_id
-                                          ? {
-                                              ...r,
-                                              mandatory: e.target.checked,
-                                            }
-                                          : r,
-                                      ),
+                                    updateQualificationUnit(
+                                      {
+                                        qualification_id: item.id,
+                                        unit_id: ju.unit_id,
+                                      },
+                                      { mandatory: e.target.checked },
                                     )
                                   }
                                 />
@@ -3917,15 +3975,10 @@ export default function LMSAdminUI() {
                                   color: "var(--ink-light)",
                                 }}
                                 onClick={() =>
-                                  setQualificationUnits(
-                                    qualificationUnits.filter(
-                                      (r) =>
-                                        !(
-                                          r.qualification_id === item.id &&
-                                          r.unit_id === ju.unit_id
-                                        ),
-                                    ),
-                                  )
+                                  deleteQualificationUnit({
+                                    qualification_id: item.id,
+                                    unit_id: ju.unit_id,
+                                  })
                                 }
                               >
                                 Remove
@@ -3982,11 +4035,7 @@ export default function LMSAdminUI() {
                                 flexShrink: 0,
                                 color: "var(--danger, #e53e3e)",
                               }}
-                              onClick={() =>
-                                setAssignments(
-                                  assignments.filter((a2) => a2.id !== a.id),
-                                )
-                              }
+                              onClick={() => deleteAssignment(a.id)}
                             >
                               Remove
                             </button>
@@ -4046,11 +4095,7 @@ export default function LMSAdminUI() {
                               flexShrink: 0,
                               color: "var(--danger, #e53e3e)",
                             }}
-                            onClick={() =>
-                              setAssignments(
-                                assignments.filter((a2) => a2.id !== a.id),
-                              )
-                            }
+                            onClick={() => deleteAssignment(a.id)}
                           >
                             Remove
                           </button>
@@ -4068,18 +4113,21 @@ export default function LMSAdminUI() {
 
     // === CREATE ASSIGNMENT TEMPLATE ===
     if (modal.type === "create-assignment-template") {
-      const handleSave = () => {
+      const handleSave = async () => {
         if (!formData.title) return;
-        setAssignments([
-          ...assignments,
-          {
+        try {
+          await createAssignment({
             id: newId("asn"),
             parent_template_type: modal.parentType,
             parent_template_id: modal.parentId,
             title: formData.title,
             description: formData.description || "",
-          },
-        ]);
+          });
+        } catch (err) {
+          console.error(err);
+          alert("Failed to create assignment.");
+          return;
+        }
         setModal({
           type: "view-template",
           templateType: modal.parentType,
@@ -4161,29 +4209,29 @@ export default function LMSAdminUI() {
             apprenticeshipQualifications.filter(
               (aq) => aq.apprenticeship_id === apprenticeshipId,
             ).length + 1;
-          setApprenticeshipQualifications([
-            ...apprenticeshipQualifications,
-            {
-              apprenticeship_id: apprenticeshipId,
-              qualification_id: id,
-              mandatory: true,
-              sequence: nextSeq,
-            },
-          ]);
+          createApprenticeshipQualification({
+            apprenticeship_id: apprenticeshipId,
+            qualification_id: id,
+            mandatory: true,
+            sequence: nextSeq,
+          }).catch((err) => {
+            console.error(err);
+            alert("Failed to attach qualification.");
+          });
         } else {
           const nextSeq =
             apprenticeshipShortCourses.filter(
               (ac) => ac.apprenticeship_id === apprenticeshipId,
             ).length + 1;
-          setApprenticeshipShortCourses([
-            ...apprenticeshipShortCourses,
-            {
-              apprenticeship_id: apprenticeshipId,
-              short_course_id: id,
-              mandatory: true,
-              sequence: nextSeq,
-            },
-          ]);
+          createApprenticeshipShortCourse({
+            apprenticeship_id: apprenticeshipId,
+            short_course_id: id,
+            mandatory: true,
+            sequence: nextSeq,
+          }).catch((err) => {
+            console.error(err);
+            alert("Failed to attach short course.");
+          });
         }
       };
 
@@ -4304,15 +4352,15 @@ export default function LMSAdminUI() {
                           qualificationUnits.filter(
                             (qu) => qu.qualification_id === qualificationId,
                           ).length + 1;
-                        setQualificationUnits([
-                          ...qualificationUnits,
-                          {
-                            qualification_id: qualificationId,
-                            unit_id: u.id,
-                            mandatory: true,
-                            sequence: nextSeq,
-                          },
-                        ]);
+                        createQualificationUnit({
+                          qualification_id: qualificationId,
+                          unit_id: u.id,
+                          mandatory: true,
+                          sequence: nextSeq,
+                        }).catch((err) => {
+                          console.error(err);
+                          alert("Failed to attach unit.");
+                        });
                       }}
                     >
                       <Circle size={16} color="var(--ink-light)" />
@@ -4492,13 +4540,9 @@ export default function LMSAdminUI() {
                             placeholder="Coverage notes…"
                             value={m.coverage_notes || ""}
                             onChange={(e) =>
-                              setKsbUnitMappings(
-                                ksbUnitMappings.map((x) =>
-                                  x.ksb_id === m.ksb_id &&
-                                  x.unit_id === m.unit_id
-                                    ? { ...x, coverage_notes: e.target.value }
-                                    : x,
-                                ),
+                              updateKsbUnitMapping(
+                                { ksb_id: m.ksb_id, unit_id: m.unit_id },
+                                { coverage_notes: e.target.value },
                               )
                             }
                           />
@@ -4509,15 +4553,10 @@ export default function LMSAdminUI() {
                               flexShrink: 0,
                             }}
                             onClick={() =>
-                              setKsbUnitMappings(
-                                ksbUnitMappings.filter(
-                                  (x) =>
-                                    !(
-                                      x.ksb_id === m.ksb_id &&
-                                      x.unit_id === m.unit_id
-                                    ),
-                                ),
-                              )
+                              deleteKsbUnitMapping({
+                                ksb_id: m.ksb_id,
+                                unit_id: m.unit_id,
+                              })
                             }
                           >
                             Remove
@@ -4562,14 +4601,14 @@ export default function LMSAdminUI() {
                       className="btn btn-primary"
                       disabled={!formData.unitPick}
                       onClick={() => {
-                        setKsbUnitMappings([
-                          ...ksbUnitMappings,
-                          {
-                            ksb_id: modal.ksbId,
-                            unit_id: formData.unitPick,
-                            coverage_notes: formData.unitNotes || "",
-                          },
-                        ]);
+                        createKsbUnitMapping({
+                          ksb_id: modal.ksbId,
+                          unit_id: formData.unitPick,
+                          coverage_notes: formData.unitNotes || "",
+                        }).catch((err) => {
+                          console.error(err);
+                          alert("Failed to add unit mapping.");
+                        });
                         setFormData({
                           ...formData,
                           unitPick: "",
@@ -4629,13 +4668,12 @@ export default function LMSAdminUI() {
                             placeholder="Coverage notes…"
                             value={m.coverage_notes || ""}
                             onChange={(e) =>
-                              setKsbAssignmentMappings(
-                                ksbAssignmentMappings.map((x) =>
-                                  x.ksb_id === m.ksb_id &&
-                                  x.assignment_id === m.assignment_id
-                                    ? { ...x, coverage_notes: e.target.value }
-                                    : x,
-                                ),
+                              updateKsbAssignmentMapping(
+                                {
+                                  ksb_id: m.ksb_id,
+                                  assignment_id: m.assignment_id,
+                                },
+                                { coverage_notes: e.target.value },
                               )
                             }
                           />
@@ -4646,15 +4684,10 @@ export default function LMSAdminUI() {
                               flexShrink: 0,
                             }}
                             onClick={() =>
-                              setKsbAssignmentMappings(
-                                ksbAssignmentMappings.filter(
-                                  (x) =>
-                                    !(
-                                      x.ksb_id === m.ksb_id &&
-                                      x.assignment_id === m.assignment_id
-                                    ),
-                                ),
-                              )
+                              deleteKsbAssignmentMapping({
+                                ksb_id: m.ksb_id,
+                                assignment_id: m.assignment_id,
+                              })
                             }
                           >
                             Remove
@@ -4704,14 +4737,14 @@ export default function LMSAdminUI() {
                       className="btn btn-primary"
                       disabled={!formData.assignmentPick}
                       onClick={() => {
-                        setKsbAssignmentMappings([
-                          ...ksbAssignmentMappings,
-                          {
-                            ksb_id: modal.ksbId,
-                            assignment_id: formData.assignmentPick,
-                            coverage_notes: formData.assignmentNotes || "",
-                          },
-                        ]);
+                        createKsbAssignmentMapping({
+                          ksb_id: modal.ksbId,
+                          assignment_id: formData.assignmentPick,
+                          coverage_notes: formData.assignmentNotes || "",
+                        }).catch((err) => {
+                          console.error(err);
+                          alert("Failed to add assignment mapping.");
+                        });
                         setFormData({
                           ...formData,
                           assignmentPick: "",
@@ -4771,13 +4804,12 @@ export default function LMSAdminUI() {
                             placeholder="Coverage notes…"
                             value={m.coverage_notes || ""}
                             onChange={(e) =>
-                              setKsbShortCourseMappings(
-                                ksbShortCourseMappings.map((x) =>
-                                  x.ksb_id === m.ksb_id &&
-                                  x.short_course_id === m.short_course_id
-                                    ? { ...x, coverage_notes: e.target.value }
-                                    : x,
-                                ),
+                              updateKsbShortCourseMapping(
+                                {
+                                  ksb_id: m.ksb_id,
+                                  short_course_id: m.short_course_id,
+                                },
+                                { coverage_notes: e.target.value },
                               )
                             }
                           />
@@ -4788,15 +4820,10 @@ export default function LMSAdminUI() {
                               flexShrink: 0,
                             }}
                             onClick={() =>
-                              setKsbShortCourseMappings(
-                                ksbShortCourseMappings.filter(
-                                  (x) =>
-                                    !(
-                                      x.ksb_id === m.ksb_id &&
-                                      x.short_course_id === m.short_course_id
-                                    ),
-                                ),
-                              )
+                              deleteKsbShortCourseMapping({
+                                ksb_id: m.ksb_id,
+                                short_course_id: m.short_course_id,
+                              })
                             }
                           >
                             Remove
@@ -4840,14 +4867,14 @@ export default function LMSAdminUI() {
                       className="btn btn-primary"
                       disabled={!formData.scPick}
                       onClick={() => {
-                        setKsbShortCourseMappings([
-                          ...ksbShortCourseMappings,
-                          {
-                            ksb_id: modal.ksbId,
-                            short_course_id: formData.scPick,
-                            coverage_notes: formData.scNotes || "",
-                          },
-                        ]);
+                        createKsbShortCourseMapping({
+                          ksb_id: modal.ksbId,
+                          short_course_id: formData.scPick,
+                          coverage_notes: formData.scNotes || "",
+                        }).catch((err) => {
+                          console.error(err);
+                          alert("Failed to add short course mapping.");
+                        });
                         setFormData({ ...formData, scPick: "", scNotes: "" });
                       }}
                     >
@@ -4903,13 +4930,12 @@ export default function LMSAdminUI() {
                             placeholder="Coverage notes…"
                             value={m.coverage_notes || ""}
                             onChange={(e) =>
-                              setKsbQualificationMappings(
-                                ksbQualificationMappings.map((x) =>
-                                  x.ksb_id === m.ksb_id &&
-                                  x.qualification_id === m.qualification_id
-                                    ? { ...x, coverage_notes: e.target.value }
-                                    : x,
-                                ),
+                              updateKsbQualificationMapping(
+                                {
+                                  ksb_id: m.ksb_id,
+                                  qualification_id: m.qualification_id,
+                                },
+                                { coverage_notes: e.target.value },
                               )
                             }
                           />
@@ -4920,15 +4946,10 @@ export default function LMSAdminUI() {
                               flexShrink: 0,
                             }}
                             onClick={() =>
-                              setKsbQualificationMappings(
-                                ksbQualificationMappings.filter(
-                                  (x) =>
-                                    !(
-                                      x.ksb_id === m.ksb_id &&
-                                      x.qualification_id === m.qualification_id
-                                    ),
-                                ),
-                              )
+                              deleteKsbQualificationMapping({
+                                ksb_id: m.ksb_id,
+                                qualification_id: m.qualification_id,
+                              })
                             }
                           >
                             Remove
@@ -4972,14 +4993,14 @@ export default function LMSAdminUI() {
                       className="btn btn-primary"
                       disabled={!formData.qualPick}
                       onClick={() => {
-                        setKsbQualificationMappings([
-                          ...ksbQualificationMappings,
-                          {
-                            ksb_id: modal.ksbId,
-                            qualification_id: formData.qualPick,
-                            coverage_notes: formData.qualNotes || "",
-                          },
-                        ]);
+                        createKsbQualificationMapping({
+                          ksb_id: modal.ksbId,
+                          qualification_id: formData.qualPick,
+                          coverage_notes: formData.qualNotes || "",
+                        }).catch((err) => {
+                          console.error(err);
+                          alert("Failed to add qualification mapping.");
+                        });
                         setFormData({
                           ...formData,
                           qualPick: "",
@@ -5009,18 +5030,21 @@ export default function LMSAdminUI() {
 
     // === ADD KSB ===
     if (modal.type === "add-ksb") {
-      const handleSave = () => {
-        setKsbs([
-          ...ksbs,
-          {
+      const handleSave = async () => {
+        try {
+          await createKsb({
             id: newId("ksb"),
             apprenticeship_id: modal.apprenticeshipId,
             code: formData.code,
             type: formData.type || "K",
             description: formData.description,
             mandatory: formData.mandatory !== false,
-          },
-        ]);
+          });
+        } catch (err) {
+          console.error(err);
+          alert("Failed to add KSB.");
+          return;
+        }
         // Return to view-template so user sees the new KSB immediately
         const appr = apprenticeships.find(
           (a) => a.id === modal.apprenticeshipId,
@@ -5103,22 +5127,37 @@ export default function LMSAdminUI() {
     if (modal.type === "create-learner") {
       const createPlan = formData.create_plan !== false; // default true
       const planStatus = formData.plan_status || "active";
-      const handleSave = () => {
+      const handleSave = async () => {
         const learnerId = newId("learner");
-        setLearners([
-          ...learners,
-          { id: learnerId, ...formData, learner_status: "planned" },
-        ]);
+        try {
+          await createLearner({
+            id: learnerId,
+            full_name: formData.full_name,
+            uln: formData.uln,
+            date_of_birth: formData.date_of_birth,
+            employer: formData.employer,
+            workplace_manager: formData.workplace_manager,
+            tutor_or_case_owner: formData.tutor_or_case_owner,
+            sen_requirements: formData.sen_requirements,
+            learner_status: "planned",
+          });
+        } catch (err) {
+          console.error(err);
+          alert("Failed to save learner. Check the console.");
+          return;
+        }
         if (createPlan) {
-          setLearningPlans([
-            ...learningPlans,
-            {
+          try {
+            await createLearningPlan({
               id: newId("plan"),
               learner_id: learnerId,
               created_date: new Date().toISOString().slice(0, 10),
               status: planStatus,
-            },
-          ]);
+            });
+          } catch (err) {
+            console.error(err);
+            alert("Learner saved but failed to create learning plan.");
+          }
         }
         closeModal();
       };
@@ -5286,142 +5325,144 @@ export default function LMSAdminUI() {
         short_course: shortCourses,
       }[itemType];
 
-      const handleSave = () => {
+      const handleSave = async () => {
         if (!formData.template_id) return;
         const tmpl = pool.find((p) => p.id === formData.template_id);
         const planItemId = newId("pi");
-        let enrollmentId, enrollmentRecord;
+        let enrollmentId;
 
-        if (itemType === "apprenticeship") {
-          enrollmentId = newId("enr_app");
-          enrollmentRecord = {
-            id: enrollmentId,
-            learner_id: learnerId,
-            apprenticeship_id: tmpl.id,
-            template_version: "v1",
-            status: "planned",
-            start_date: formData.start_date,
-            planned_end_date: formData.planned_end_date,
-          };
-          setApprenticeshipEnrollments((prev) => [...prev, enrollmentRecord]);
+        try {
+          if (itemType === "apprenticeship") {
+            enrollmentId = newId("enr_app");
+            await createApprenticeshipEnrollment({
+              id: enrollmentId,
+              learner_id: learnerId,
+              apprenticeship_id: tmpl.id,
+              template_version: "v1",
+              status: "planned",
+              start_date: formData.start_date,
+              planned_end_date: formData.planned_end_date,
+            });
 
-          // CASCADE: create child enrollments for embedded quals + short courses
-          const newQualEnrs = [],
-            newUnitEnrs = [],
-            newCourseEnrs = [];
-          apprenticeshipQualifications
-            .filter((aq) => aq.apprenticeship_id === tmpl.id)
-            .forEach((aq) => {
-              const qid = aq.qualification_id;
-              const qe = {
-                id: newId("enr_qual"),
+            // CASCADE: child quals → units (junctions still local), and child short courses.
+            // Sequential awaits so parent IDs are valid before children reference them.
+            const qualJunctions = apprenticeshipQualifications.filter(
+              (aq) => aq.apprenticeship_id === tmpl.id,
+            );
+            for (const aq of qualJunctions) {
+              const qualEnrId = newId("enr_qual");
+              await createQualEnrollment({
+                id: qualEnrId,
                 learner_id: learnerId,
-                qualification_id: qid,
+                qualification_id: aq.qualification_id,
                 parent_enrollment_id: enrollmentId,
                 template_version: "v1",
                 status: "planned",
-              };
-              newQualEnrs.push(qe);
-              // cascade units
+              });
               const qUnits = qualificationUnits
-                .filter((qu) => qu.qualification_id === qid)
+                .filter((qu) => qu.qualification_id === aq.qualification_id)
                 .map((qu) => units.find((u) => u.id === qu.unit_id))
                 .filter(Boolean);
-              qUnits.forEach((u) =>
-                newUnitEnrs.push({
+              for (const u of qUnits) {
+                await createUnitEnrollment({
                   id: newId("enr_unit"),
                   learner_id: learnerId,
                   unit_id: u.id,
-                  parent_enrollment_id: qe.id,
+                  parent_enrollment_id: qualEnrId,
                   status: "planned",
-                }),
-              );
-            });
-          apprenticeshipShortCourses
-            .filter((ac) => ac.apprenticeship_id === tmpl.id)
-            .forEach((ac) => {
-              newCourseEnrs.push({
+                });
+              }
+            }
+
+            const scJunctions = apprenticeshipShortCourses.filter(
+              (ac) => ac.apprenticeship_id === tmpl.id,
+            );
+            for (const ac of scJunctions) {
+              await createShortCourseEnrollment({
                 id: newId("enr_sc"),
                 learner_id: learnerId,
                 short_course_id: ac.short_course_id,
                 parent_enrollment_id: enrollmentId,
                 status: "planned",
               });
-            });
-          if (newQualEnrs.length)
-            setQualEnrollments((prev) => [...prev, ...newQualEnrs]);
-          if (newUnitEnrs.length)
-            setUnitEnrollments((prev) => [...prev, ...newUnitEnrs]);
-          if (newCourseEnrs.length)
-            setShortCourseEnrollments((prev) => [...prev, ...newCourseEnrs]);
-        } else if (itemType === "qualification") {
-          enrollmentId = newId("enr_qual");
-          enrollmentRecord = {
-            id: enrollmentId,
-            learner_id: learnerId,
-            qualification_id: tmpl.id,
-            parent_enrollment_id: null,
-            template_version: "v1",
-            status: "planned",
-            registration_number: formData.registration_number,
-            registration_date: formData.registration_date,
-          };
-          setQualEnrollments((prev) => [...prev, enrollmentRecord]);
-          // cascade units
-          const qUnits = qualificationUnits
-            .filter((qu) => qu.qualification_id === tmpl.id)
-            .map((qu) => units.find((u) => u.id === qu.unit_id))
-            .filter(Boolean);
-          if (qUnits.length) {
-            const newUnits = qUnits.map((u) => ({
-              id: newId("enr_unit"),
+            }
+          } else if (itemType === "qualification") {
+            enrollmentId = newId("enr_qual");
+            await createQualEnrollment({
+              id: enrollmentId,
               learner_id: learnerId,
-              unit_id: u.id,
-              parent_enrollment_id: enrollmentId,
+              qualification_id: tmpl.id,
+              parent_enrollment_id: null,
+              template_version: "v1",
               status: "planned",
-            }));
-            setUnitEnrollments((prev) => [...prev, ...newUnits]);
+              registration_number: formData.registration_number,
+              registration_date: formData.registration_date,
+            });
+            const qUnits = qualificationUnits
+              .filter((qu) => qu.qualification_id === tmpl.id)
+              .map((qu) => units.find((u) => u.id === qu.unit_id))
+              .filter(Boolean);
+            for (const u of qUnits) {
+              await createUnitEnrollment({
+                id: newId("enr_unit"),
+                learner_id: learnerId,
+                unit_id: u.id,
+                parent_enrollment_id: enrollmentId,
+                status: "planned",
+              });
+            }
+          } else if (itemType === "unit") {
+            enrollmentId = newId("enr_unit");
+            await createUnitEnrollment({
+              id: enrollmentId,
+              learner_id: learnerId,
+              unit_id: tmpl.id,
+              parent_enrollment_id: null,
+              template_version: "v1",
+              status: "planned",
+              start_date: formData.start_date,
+            });
+          } else if (itemType === "short_course") {
+            enrollmentId = newId("enr_sc");
+            await createShortCourseEnrollment({
+              id: enrollmentId,
+              learner_id: learnerId,
+              short_course_id: tmpl.id,
+              parent_enrollment_id: null,
+              template_version: "v1",
+              status: "planned",
+              start_date: formData.start_date,
+            });
           }
-        } else if (itemType === "unit") {
-          enrollmentId = newId("enr_unit");
-          enrollmentRecord = {
-            id: enrollmentId,
-            learner_id: learnerId,
-            unit_id: tmpl.id,
-            parent_enrollment_id: null,
-            template_version: "v1",
-            status: "planned",
-            start_date: formData.start_date,
-          };
-          setUnitEnrollments((prev) => [...prev, enrollmentRecord]);
-        } else if (itemType === "short_course") {
-          enrollmentId = newId("enr_sc");
-          enrollmentRecord = {
-            id: enrollmentId,
-            learner_id: learnerId,
-            short_course_id: tmpl.id,
-            parent_enrollment_id: null,
-            template_version: "v1",
-            status: "planned",
-            start_date: formData.start_date,
-          };
-          setShortCourseEnrollments((prev) => [...prev, enrollmentRecord]);
-        }
 
-        const activePlan =
-          learningPlans.find(
-            (p) => p.learner_id === learnerId && p.status === "active",
-          ) || learningPlans.find((p) => p.learner_id === learnerId);
-        setPlanItems((prev) => [
-          ...prev,
-          {
+          // Resolve (or create) the learner's plan before linking the plan item —
+          // plan_id is a real FK now, so a stub like "plan_<learnerId>" would fail.
+          let plan =
+            learningPlans.find(
+              (p) => p.learner_id === learnerId && p.status === "active",
+            ) || learningPlans.find((p) => p.learner_id === learnerId);
+          if (!plan) {
+            plan = await createLearningPlan({
+              id: newId("plan"),
+              learner_id: learnerId,
+              created_date: new Date().toISOString().slice(0, 10),
+              status: "active",
+            });
+          }
+          await createPlanItem({
             id: planItemId,
             learner_id: learnerId,
-            plan_id: activePlan ? activePlan.id : "plan_" + learnerId,
+            plan_id: plan.id,
             enrollment_type: itemType,
             enrollment_id: enrollmentId,
-          },
-        ]);
+          });
+        } catch (err) {
+          console.error(err);
+          alert(
+            "Failed to add to learning plan. Some records may have been created — check the console.",
+          );
+          return;
+        }
         closeModal();
       };
 
@@ -5619,28 +5660,20 @@ export default function LMSAdminUI() {
     // === EDIT ENROLLMENT ===
     if (modal.type === "edit-enrollment") {
       const { enrollment, enrollmentType: et } = modal;
-      const handleSave = () => {
-        const updated = { ...enrollment, ...formData };
-        if (et === "apprenticeship")
-          setApprenticeshipEnrollments(
-            apprenticeshipEnrollments.map((x) =>
-              x.id === enrollment.id ? updated : x,
-            ),
-          );
-        if (et === "qualification")
-          setQualEnrollments(
-            qualEnrollments.map((x) => (x.id === enrollment.id ? updated : x)),
-          );
-        if (et === "unit")
-          setUnitEnrollments(
-            unitEnrollments.map((x) => (x.id === enrollment.id ? updated : x)),
-          );
-        if (et === "short_course")
-          setShortCourseEnrollments(
-            shortCourseEnrollments.map((x) =>
-              x.id === enrollment.id ? updated : x,
-            ),
-          );
+      const handleSave = async () => {
+        const updaters = {
+          apprenticeship: updateApprenticeshipEnrollment,
+          qualification: updateQualEnrollment,
+          unit: updateUnitEnrollment,
+          short_course: updateShortCourseEnrollment,
+        };
+        try {
+          await updaters[et](enrollment.id, formData);
+        } catch (err) {
+          console.error(err);
+          alert("Failed to save enrollment changes.");
+          return;
+        }
         closeModal();
       };
       return (
@@ -5928,11 +5961,11 @@ export default function LMSAdminUI() {
         });
       };
 
-      const handleSave = () => {
+      const handleSave = async () => {
         const assignmentId = newId("asn");
-        setLearnerAssignments([
-          ...learnerAssignments,
-          {
+        const selectedKsbIds = formData.ksb_links || [];
+        try {
+          await createLearnerAssignment({
             id: assignmentId,
             learner_id: learnerId,
             parent_enrollment_id: enrollment.id,
@@ -5942,37 +5975,38 @@ export default function LMSAdminUI() {
             submission_date: formData.submission_date,
             mark_or_grade: formData.mark_or_grade,
             assessor_feedback: formData.assessor_feedback,
-            ksb_links: formData.ksb_links || [],
-          },
-        ]);
-        // Create / resolve learnerKsb rows and learnerAssignmentKsbs links
-        const selectedKsbIds = formData.ksb_links || [];
-        if (selectedKsbIds.length > 0 && rootApprEnrId) {
-          const updatedLearnerKsbs = [...learnerKsbs];
-          const newLinks = [];
-          selectedKsbIds.forEach((ksbTemplateId) => {
-            let lk = updatedLearnerKsbs.find(
-              (r) =>
-                r.apprenticeship_enrollment_id === rootApprEnrId &&
-                r.ksb_id === ksbTemplateId,
-            );
-            if (!lk) {
-              lk = {
-                id: newId("lk"),
-                apprenticeship_enrollment_id: rootApprEnrId,
-                ksb_id: ksbTemplateId,
-                status: "not started",
-              };
-              updatedLearnerKsbs.push(lk);
-            }
-            newLinks.push({
-              id: newId("lak"),
-              learner_assignment_id: assignmentId,
-              learner_ksb_id: lk.id,
-            });
+            ksb_links: selectedKsbIds,
           });
-          setLearnerKsbs(updatedLearnerKsbs);
-          setLearnerAssignmentKsbs([...learnerAssignmentKsbs, ...newLinks]);
+          // For each selected KSB template, find an existing learner_ksb row
+          // for this enrollment or create one, then link it to the assignment.
+          if (selectedKsbIds.length > 0 && rootApprEnrId) {
+            for (const ksbTemplateId of selectedKsbIds) {
+              let lk = learnerKsbs.find(
+                (r) =>
+                  r.apprenticeship_enrollment_id === rootApprEnrId &&
+                  r.ksb_id === ksbTemplateId,
+              );
+              if (!lk) {
+                lk = await createLearnerKsb({
+                  id: newId("lk"),
+                  apprenticeship_enrollment_id: rootApprEnrId,
+                  ksb_id: ksbTemplateId,
+                  status: "not started",
+                });
+              }
+              await createLearnerAssignmentKsb({
+                id: newId("lak"),
+                learner_assignment_id: assignmentId,
+                learner_ksb_id: lk.id,
+              });
+            }
+          }
+        } catch (err) {
+          console.error(err);
+          alert(
+            "Failed to save assignment. Some records may have been created — check the console.",
+          );
+          return;
         }
         closeModal();
       };
@@ -6148,19 +6182,29 @@ export default function LMSAdminUI() {
       const apprKsbs = ksbs.filter(
         (k) => k.apprenticeship_id === enrollment.apprenticeship_id,
       );
-      const handleSave = () => {
+      const handleSave = async () => {
         const existing = learnerKsbs
           .filter((lk) => lk.apprenticeship_enrollment_id === enrollment.id)
           .map((lk) => lk.ksb_id);
-        const newRecords = apprKsbs
-          .filter((k) => !existing.includes(k.id))
-          .map((k) => ({
-            id: newId("lk"),
-            apprenticeship_enrollment_id: enrollment.id,
-            ksb_id: k.id,
-            status: "not started",
-          }));
-        setLearnerKsbs([...learnerKsbs, ...newRecords]);
+        const toCreate = apprKsbs.filter((k) => !existing.includes(k.id));
+        try {
+          await Promise.all(
+            toCreate.map((k) =>
+              createLearnerKsb({
+                id: newId("lk"),
+                apprenticeship_enrollment_id: enrollment.id,
+                ksb_id: k.id,
+                status: "not started",
+              }),
+            ),
+          );
+        } catch (err) {
+          console.error(err);
+          alert(
+            "Failed to initialise some KSBs. Partial progress may have saved — check the console.",
+          );
+          return;
+        }
         closeModal();
       };
       return (
@@ -6213,15 +6257,18 @@ export default function LMSAdminUI() {
 
     // === LOG OTJ ===
     if (modal.type === "log-otj") {
-      const handleSave = () => {
-        setOtjHours([
-          ...otjHours,
-          {
+      const handleSave = async () => {
+        try {
+          await createOtjHours({
             id: newId("otj"),
             apprenticeship_enrollment_id: modal.enrollment.id,
             ...formData,
-          },
-        ]);
+          });
+        } catch (err) {
+          console.error(err);
+          alert("Failed to log OTJ hours.");
+          return;
+        }
         closeModal();
       };
       return (
@@ -6312,22 +6359,21 @@ export default function LMSAdminUI() {
     // === EDIT GATEWAY ===
     if (modal.type === "edit-gateway") {
       const existing = modal.gateway;
-      const handleSave = () => {
-        if (existing) {
-          setGateways(
-            gateways.map((g) =>
-              g.id === existing.id ? { ...existing, ...formData } : g,
-            ),
-          );
-        } else {
-          setGateways([
-            ...gateways,
-            {
+      const handleSave = async () => {
+        try {
+          if (existing) {
+            await updateGateway(existing.id, formData);
+          } else {
+            await createGateway({
               id: newId("gw"),
               apprenticeship_enrollment_id: modal.enrollment.id,
               ...formData,
-            },
-          ]);
+            });
+          }
+        } catch (err) {
+          console.error(err);
+          alert("Failed to save gateway.");
+          return;
         }
         closeModal();
       };
