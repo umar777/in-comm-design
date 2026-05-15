@@ -1185,8 +1185,8 @@ export default function LMSAdminUI() {
           "Level",
           "Sector",
           "KSBs",
-          "Quals",
-          "EPA",
+          //"Quals",
+          //"EPA",
           "Status",
         ],
         emptyMsg: "No apprenticeships match your filters.",
@@ -1269,11 +1269,11 @@ export default function LMSAdminUI() {
             </td>
             <td>{item.sector || "—"}</td>
             <td>{ksbCount}</td>
-            <td>
-              {qualifications.filter((q) => q.apprenticeship_id === item.id)
-                .length || "—"}
-            </td>
-            <td>{item.epa_organisation || "—"}</td>
+            {/* <td> */}
+            {/* {qualifications.filter((q) => q.apprenticeship_id === item.id) */}
+            {/* //    .length || "—"} */}
+            {/* //</td> */}
+            {/* <td>{item.epa_organisation || "—"}</td> */}
             <td>
               <span className={`status-pill ${item.status || "draft"}`}>
                 {item.status || "draft"}
@@ -2407,7 +2407,9 @@ export default function LMSAdminUI() {
                           alert("Failed to remove assignment.");
                         });
                         setLearnerAssignmentKsbs((prev) =>
-                          prev.filter((ak) => ak.learner_assignment_id !== a.id),
+                          prev.filter(
+                            (ak) => ak.learner_assignment_id !== a.id,
+                          ),
                         );
                       }}
                     >
